@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  CodeSandbox:
+    build: .
+    image: codesandbox:latest
+    container_name: CodeSandbox
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+    
+    # Temporary filesystem for workspace
+    tmpfs:
+      - /app/workspace:size=100m,uid=999,gid=999
+      - /tmp:noexec,nosuid,nodev,size=50m
+    
+    # Network isolation
+    network_mode: none
+    
+    # Environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    
+    # Prevent container from running indefinitely
+    init: true
+    
+    # Auto-remove container after execution
+    command: ["python", "execute.py"] 
