@@ -9,6 +9,7 @@ copyright: Maintained by <a href="https://fcarli.com">fcarli</a>.
 
 nav:
   - Home: index.md
+  - PythonSandboxManager Features: pythonsandboxmanager-features.md
   - Docker Setup: docker-setup.md
   - API Reference: modules.md
 plugins:
@@ -51,3 +52,10 @@ markdown_extensions:
       permalink: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

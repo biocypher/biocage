@@ -278,6 +278,7 @@ CodeSandbox is designed with security as a first-class concern:
 
 ## 📚 Documentation
 
+- [PythonSandboxManager Features & Usage](pythonsandboxmanager-features.md) - Comprehensive guide to advanced sandbox features
 - [Docker Image Setup](docker-setup.md) - Complete guide for building and configuring the Docker environment
 - [API Reference](modules.md) - Detailed API documentation
 - [Contributing Guide](https://github.com/fcarli/CodeSandbox/blob/main/CONTRIBUTING.md) - How to contribute to the project
