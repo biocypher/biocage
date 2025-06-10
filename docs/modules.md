@@ -1,1 +1,1 @@
-::: codesandbox.foo
+::: codesandbox.sandbox_manager

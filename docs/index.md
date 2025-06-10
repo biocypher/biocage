@@ -43,27 +43,69 @@ When working with LLMs that generate Python code, safety and reliability are par
 - **Environment variable support** for dynamic code execution
 - **Configurable timeouts** and resource limits
 - **Extensible dependency management** through pyproject.toml
+- **File system exposure** for data processing workflows
+- **State persistence** across multiple executions
+- **Context manager support** for automatic resource cleanup
 
 ## 🚀 Quick Start
 
 ### Basic Usage
 
-Execute Python code via stdin:
-```bash
-echo 'print("Hello from CodeSandbox!")' | docker run --rm -i codesandbox:latest
+#### Using the Python API
+
+```python
+from codesandbox import PythonSandboxManager
+
+# Simple execution
+with PythonSandboxManager() as sandbox:
+    result = sandbox.run('print("Hello from CodeSandbox!")')
+    print(result.stdout)  # "Hello from CodeSandbox!"
 ```
 
-Execute code via environment variable:
-```bash
-docker run --rm -e PYTHON_CODE="print('Hello World!')" codesandbox:latest
+#### Persistent Sessions with State
+
+```python
+# Start a persistent container for multiple executions
+sandbox = PythonSandboxManager()
+sandbox.start_container()
+
+# Execute code with state persistence
+result1 = sandbox.run('x = 42')
+result2 = sandbox.run('print(f"x = {x}")')  # Remembers x from previous execution
+print(result2.stdout)  # "x = 42"
+
+sandbox.stop_container()
+```
+
+#### File and Directory Exposure
+
+```python
+# Expose files and directories to the sandbox
+with PythonSandboxManager().configure_context_manager(
+    expose_files={"/path/to/data.csv": "/app/shared/data.csv"},
+    expose_directories={"/path/to/models": "/app/shared/models"},
+    expose_directories_rw={"./output": "/app/output"}
+) as sandbox:
+    result = sandbox.run("""
+import pandas as pd
+data = pd.read_csv('/app/shared/data.csv')
+print(f"Loaded {len(data)} rows")
+
+# Save results to output directory
+with open('/app/output/results.txt', 'w') as f:
+    f.write(f"Processed {len(data)} rows")
+""")
 ```
 
 ### Working with Dependencies
 
 CodeSandbox comes with popular data science libraries pre-installed:
 
-```bash
-cat << 'EOF' | docker run --rm -i codesandbox:latest
+```python
+from codesandbox import PythonSandboxManager
+
+with PythonSandboxManager() as sandbox:
+    result = sandbox.run("""
 import numpy as np
 import pandas as pd
 
@@ -73,27 +115,116 @@ print(f"Array mean: {np.mean(arr)}")
 
 # Pandas operations
 df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
-print(f"DataFrame:\n{df}")
-EOF
+print(f"DataFrame shape: {df.shape}")
+""")
+    print(result.stdout)
+```
+
+### Advanced Features
+
+#### State Persistence Between Executions
+
+```python
+# Variables, functions, and imports persist across executions
+sandbox = PythonSandboxManager()
+sandbox.start_container()
+
+# Define a function
+sandbox.run("""
+def calculate_fibonacci(n):
+    if n <= 1:
+        return n
+    return calculate_fibonacci(n-1) + calculate_fibonacci(n-2)
+""")
+
+# Use the function in subsequent execution
+result = sandbox.run("print(f'Fibonacci(10) = {calculate_fibonacci(10)}')")
+print(result.stdout)  # "Fibonacci(10) = 55"
+
+sandbox.stop_container()
+```
+
+#### Resource Management and Security
+
+```python
+# Configure container resources
+sandbox = PythonSandboxManager()
+sandbox.start_container(
+    memory_limit="2g",
+    cpu_limit="4.0",
+    network_access=False  # Disabled by default for security
+)
+
+# Automatic failure handling and container shutdown
+result = sandbox.run("print(undefined_variable)", shutdown_on_failure=True)
+print(result.success)  # False - container automatically stopped
+```
+
+#### Temporary File Creation
+
+```python
+with PythonSandboxManager() as sandbox:
+    # Create temporary files accessible in the container
+    csv_data = "name,age\nAlice,30\nBob,25"
+    csv_path = sandbox.create_temp_file(csv_data, suffix=".csv")
+    
+    result = sandbox.run(f"""
+import pandas as pd
+df = pd.read_csv('{csv_path}')
+print(f"Loaded data: {len(df)} rows")
+print(df.to_string())
+""")
+    print(result.stdout)
+    # Temporary files cleaned up automatically
+```
+
+### Direct Docker Usage
+
+You can also use the Docker container directly:
+
+```bash
+# Execute via stdin
+echo 'print("Hello from CodeSandbox!")' | docker run --rm -i codesandbox:latest
+
+# Execute via environment variable
+docker run --rm -e PYTHON_CODE="print('Hello World!')" codesandbox:latest
 ```
 
 ## 📋 Output Format
 
-All executions return structured JSON output containing:
+All executions return a `SandboxExecutionResult` object with the following attributes:
 
 - **stdout**: Standard output from the executed code
-- **stderr**: Error messages and warnings
+- **stderr**: Error messages and warnings  
 - **exit_code**: Execution result status
 - **execution_time**: Time taken to execute the code
 - **error**: Detailed error information when applicable
+- **success**: Boolean indicating if execution was successful
 
-Example output:
+Example usage:
+```python
+from codesandbox import PythonSandboxManager
+
+with PythonSandboxManager() as sandbox:
+    result = sandbox.run('print("Hello from CodeSandbox!")')
+    
+    print(f"Success: {result.success}")
+    print(f"Output: {result.stdout}")
+    print(f"Execution time: {result.execution_time:.3f}s")
+    
+    # Convert to dictionary if needed
+    result_dict = result.to_dict()
+```
+
+Example result dictionary:
 ```json
 {
   "stdout": "Hello from CodeSandbox!\n",
   "stderr": "",
   "exit_code": 0,
-  "execution_time": 0.045
+  "execution_time": 0.045,
+  "error": null,
+  "success": true
 }
 ```
 
@@ -101,10 +232,25 @@ Example output:
 
 CodeSandbox is built with a clean architecture that separates concerns:
 
-- **Core Library** (`codesandbox/`): Python package with the main functionality
-- **Docker Environment** (`python_docker/`): Containerized execution environment
+- **PythonSandboxManager** (`codesandbox/sandbox_manager.py`): Main class for container lifecycle management and code execution
+- **SandboxExecutionResult** (`codesandbox/sandbox_manager.py`): Result container with execution metadata
+- **Docker Environment** (`python_docker/`): Containerized execution environment with security hardening
 - **Build System**: Automated image building and dependency management
-- **Testing Suite**: Comprehensive tests for all functionality
+- **State Persistence**: Session state management for multi-execution workflows
+
+### Key Components
+
+#### PythonSandboxManager
+- Container lifecycle management (start/stop/restart)
+- File and directory exposure to containers
+- Persistent and ephemeral execution modes
+- Resource management (memory, CPU, timeouts)
+- Security enforcement (network isolation, read-only filesystem)
+
+#### Execution Modes
+- **Ephemeral**: Single-use containers for isolated execution
+- **Persistent**: Long-running containers with state preservation between executions
+- **Context Manager**: Automatic resource cleanup with `with` statements
 
 ## 🎯 Use Cases
 
