@@ -9,13 +9,14 @@ copyright: Maintained by <a href="https://fcarli.com">fcarli</a>.
 
 nav:
   - Home: index.md
-  - Modules: modules.md
+  - Docker Setup: docker-setup.md
+  - API Reference: modules.md
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
-          paths: ["codesandbox"]
+          paths: ["."]
 theme:
   name: material
   feature:
