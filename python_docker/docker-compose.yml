@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  CodeSandbox:
+  BioCage:
     build: .
-    image: codesandbox:latest
-    container_name: CodeSandbox
+    image: biocage:latest
+    container_name: BioCage
     
     # Security settings
     security_opt:

@@ -1,6 +1,6 @@
 """Test context manager functionality."""
 
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
 
 class TestBasicContextManager:
@@ -8,7 +8,7 @@ class TestBasicContextManager:
 
     def test_simple_context_manager(self):
         """Test basic context manager usage."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             assert sandbox.is_running
             result = sandbox.run("print('Hello from context manager!')")
             assert result.success
@@ -18,7 +18,7 @@ class TestBasicContextManager:
     def test_automatic_cleanup(self):
         """Test that context manager properly cleans up resources."""
         sandbox = None
-        with PythonSandboxManager() as sb:
+        with BioCageManager() as sb:
             sandbox = sb
             assert sandbox.is_running
             result = sandbox.run("x = 42")
@@ -31,7 +31,7 @@ class TestBasicContextManager:
     def test_context_manager_with_exception(self):
         """Test context manager cleanup when exception occurs."""
         try:
-            with PythonSandboxManager() as sandbox:
+            with BioCageManager() as sandbox:
                 assert sandbox.is_running
                 result = sandbox.run("print('Before exception')")
                 assert result.success
@@ -47,7 +47,7 @@ class TestConfigureContextManager:
 
     def test_configure_with_resources(self):
         """Test context manager with custom resource configuration."""
-        with PythonSandboxManager().configure_context_manager(memory_limit="1g", cpu_limit="2.0") as sandbox:
+        with BioCageManager().configure_context_manager(memory_limit="1g", cpu_limit="2.0") as sandbox:
             assert sandbox.is_running
 
             info = sandbox.get_container_info()
@@ -60,7 +60,7 @@ class TestConfigureContextManager:
 
     def test_configure_with_high_performance(self):
         """Test high-performance configuration."""
-        with PythonSandboxManager().configure_context_manager(memory_limit="4g", cpu_limit="8.0") as sandbox:
+        with BioCageManager().configure_context_manager(memory_limit="4g", cpu_limit="8.0") as sandbox:
             result = sandbox.run("""
 import pandas as pd
 import numpy as np
@@ -86,7 +86,7 @@ print(f"Correlation computed: {correlation.shape}")
 
     def test_method_chaining(self):
         """Test that configure_context_manager returns self for chaining."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         configured_sandbox = sandbox.configure_context_manager(memory_limit="512m")
 
         # Should return the same instance
@@ -100,7 +100,7 @@ print(f"Correlation computed: {correlation.shape}")
 
     def test_configure_multiple_parameters(self):
         """Test configuring multiple parameters at once."""
-        with PythonSandboxManager().configure_context_manager(
+        with BioCageManager().configure_context_manager(
             memory_limit="2g",
             cpu_limit="4.0",
             network_access=False,  # Explicit security setting
@@ -127,7 +127,7 @@ class TestContextManagerWithFileExposure:
 
     def test_configure_with_temp_files(self):
         """Test context manager with temporary file creation."""
-        with PythonSandboxManager().configure_context_manager(memory_limit="1g") as sandbox:
+        with BioCageManager().configure_context_manager(memory_limit="1g") as sandbox:
             # Create temp files within context
             csv_path = sandbox.create_temp_file("name,age\nAlice,25\nBob,30", ".csv")
             json_path = sandbox.create_temp_file('{"test": true, "value": 42}', ".json")
@@ -166,7 +166,7 @@ print(f"Files exist: CSV={{csv_exists}}, JSON={{json_exists}}")
             temp_file = f.name
 
         try:
-            with PythonSandboxManager().configure_context_manager(
+            with BioCageManager().configure_context_manager(
                 memory_limit="512m", expose_files={temp_file: "/app/shared/test.txt"}
             ) as sandbox:
                 result = sandbox.run("""
@@ -199,9 +199,7 @@ print(f"First line: {content.split(chr(10))[0]}")
             (test_dir / "file1.txt").write_text("Content of file 1")
             (test_dir / "file2.txt").write_text("Content of file 2")
 
-            with PythonSandboxManager().configure_context_manager(
-                expose_directories={str(test_dir): "/app/data"}
-            ) as sandbox:
+            with BioCageManager().configure_context_manager(expose_directories={str(test_dir): "/app/data"}) as sandbox:
                 result = sandbox.run("""
 import os
 
@@ -231,11 +229,11 @@ class TestContextManagerEdgeCases:
 
     def test_nested_context_managers(self):
         """Test that nested context managers work correctly."""
-        with PythonSandboxManager().configure_context_manager(memory_limit="512m") as sandbox1:
+        with BioCageManager().configure_context_manager(memory_limit="512m") as sandbox1:
             result1 = sandbox1.run("x = 1; print(f'Sandbox 1: {x}')")
             assert result1.success
 
-            with PythonSandboxManager().configure_context_manager(memory_limit="256m") as sandbox2:
+            with BioCageManager().configure_context_manager(memory_limit="256m") as sandbox2:
                 result2 = sandbox2.run("y = 2; print(f'Sandbox 2: {y}')")
                 assert result2.success
                 assert "Sandbox 2: 2" in result2.stdout
@@ -248,7 +246,7 @@ class TestContextManagerEdgeCases:
     def test_reuse_after_context_exit(self):
         """Test behavior when trying to reuse sandbox after context exit."""
         sandbox = None
-        with PythonSandboxManager() as sb:
+        with BioCageManager() as sb:
             sandbox = sb
             result = sandbox.run("print('In context')")
             assert result.success
@@ -267,7 +265,7 @@ class TestContextManagerEdgeCases:
         """Test handling of invalid resource specifications."""
         # These should either work or fail gracefully, not crash
         try:
-            with PythonSandboxManager().configure_context_manager(
+            with BioCageManager().configure_context_manager(
                 memory_limit="invalid", cpu_limit="also_invalid"
             ) as sandbox:
                 # If it doesn't raise an exception, the sandbox should still work
@@ -279,7 +277,7 @@ class TestContextManagerEdgeCases:
 
     def test_multiple_configure_calls(self):
         """Test calling configure_context_manager multiple times."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
 
         # Configure multiple times (last one should win)
         sandbox.configure_context_manager(memory_limit="512m")
@@ -296,7 +294,7 @@ class TestPreConfiguredMethod:
 
     def test_pre_configured_container(self):
         """Test using a pre-started container with context manager."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
 
         # Start container manually first
         sandbox.start_container(memory_limit="512m", cpu_limit="1.0")
@@ -318,7 +316,7 @@ class TestPreConfiguredMethod:
 
     def test_pre_configured_with_persistence(self):
         """Test pre-configured container maintains state through context."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:

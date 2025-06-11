@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
 
 @pytest.fixture
 def test_data_dir():
     """Create a temporary directory with test data."""
-    test_dir = Path(tempfile.mkdtemp(prefix="sandbox_test_"))
+    test_dir = Path(tempfile.mkdtemp(prefix="biocage_test_"))
 
     # Create a test CSV file
     csv_file = test_dir / "sample_data.csv"
@@ -52,7 +52,7 @@ PI = 3.14159
 @pytest.fixture
 def output_dir():
     """Create a temporary output directory."""
-    output_dir = Path(tempfile.mkdtemp(prefix="sandbox_output_"))
+    output_dir = Path(tempfile.mkdtemp(prefix="biocage_output_"))
     yield output_dir
     shutil.rmtree(output_dir)
 
@@ -64,7 +64,7 @@ class TestFileExposure:
         """Test exposing a single file with custom container path."""
         csv_file = test_data_dir["csv_file"]
 
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         container_path = sandbox.expose_file(csv_file, "/app/shared/data.csv")
 
         with sandbox:
@@ -86,7 +86,7 @@ print(f"Names: {{list(data['name'])}}")
         """Test exposing a file with auto-generated container path."""
         csv_file = test_data_dir["csv_file"]
 
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         container_path = sandbox.expose_file(csv_file)  # Auto-generated path
 
         with sandbox:
@@ -106,7 +106,7 @@ print(f"Lines: {{len(lines)}}")
         """Test file exposure using context manager configuration."""
         csv_file = test_data_dir["csv_file"]
 
-        with PythonSandboxManager().configure_context_manager(
+        with BioCageManager().configure_context_manager(
             expose_files={str(csv_file): "/app/shared/data.csv"}
         ) as sandbox:
             result = sandbox.run("""
@@ -123,7 +123,7 @@ print(f"Cities: {', '.join(df['city'])}")
         """Test exposing and importing a Python module."""
         py_file = test_data_dir["py_file"]
 
-        with PythonSandboxManager().configure_context_manager(
+        with BioCageManager().configure_context_manager(
             expose_files={str(py_file): "/app/shared/helper.py"}
         ) as sandbox:
             result = sandbox.run("""
@@ -148,7 +148,7 @@ class TestDirectoryExposure:
         """Test exposing a directory as read-only."""
         subdir = test_data_dir["subdir"]
 
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         container_path = sandbox.expose_directory(subdir, "/app/models", read_only=True)
 
         with sandbox:
@@ -175,9 +175,7 @@ print(f"Config: {{config}}")
         """Test directory exposure using context manager."""
         subdir = test_data_dir["subdir"]
 
-        with PythonSandboxManager().configure_context_manager(
-            expose_directories={str(subdir): "/app/models"}
-        ) as sandbox:
+        with BioCageManager().configure_context_manager(expose_directories={str(subdir): "/app/models"}) as sandbox:
             result = sandbox.run("""
 import os
 
@@ -201,7 +199,7 @@ for file_info in sorted(files):
         test_dir = test_data_dir["test_dir"]
         subdir = test_data_dir["subdir"]
 
-        with PythonSandboxManager().configure_context_manager(
+        with BioCageManager().configure_context_manager(
             expose_directories={str(test_dir): "/app/data", str(subdir): "/app/models"}
         ) as sandbox:
             result = sandbox.run("""
@@ -227,7 +225,7 @@ class TestWritableDirectories:
 
     def test_writable_directory_basic(self, output_dir):
         """Test basic writable directory functionality."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         container_path = sandbox.expose_directory(output_dir, "/app/output", read_only=False)
 
         with sandbox:
@@ -258,7 +256,7 @@ print(f"Content: {{content}}")
 
     def test_writable_directory_context_manager(self, output_dir):
         """Test writable directory with context manager."""
-        with PythonSandboxManager().configure_context_manager(
+        with BioCageManager().configure_context_manager(
             expose_directories_rw={str(output_dir): "/app/output"}
         ) as sandbox:
             result = sandbox.run("""
@@ -296,7 +294,7 @@ print(f"Created files: {sorted(files)}")
         """Test combining read-only input and writable output directories."""
         input_dir = test_data_dir["test_dir"]
 
-        with PythonSandboxManager().configure_context_manager(
+        with BioCageManager().configure_context_manager(
             expose_directories={str(input_dir): "/app/input"},  # Read-only
             expose_directories_rw={str(output_dir): "/app/output"},  # Writable
         ) as sandbox:
@@ -360,7 +358,7 @@ class TestTemporaryFiles:
 
     def test_create_temp_file_csv(self):
         """Test creating a temporary CSV file."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             csv_content = "name,value\ntest1,10\ntest2,20"
             temp_path = sandbox.create_temp_file(csv_content, ".csv")
 
@@ -382,7 +380,7 @@ print(f"Sum: {{df['value'].sum()}}")
 
     def test_create_temp_file_python(self):
         """Test creating a temporary Python file."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             python_content = """
 def factorial(n):
     if n <= 1:
@@ -417,7 +415,7 @@ print(f"Fibonacci 7: {{module.fibonacci(7)}}")
 
     def test_multiple_temp_files(self):
         """Test creating multiple temporary files."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             # Create multiple temp files
             csv_path = sandbox.create_temp_file("id,name\n1,Alice\n2,Bob", ".csv")
             json_path = sandbox.create_temp_file('{"config": "test", "value": 123}', ".json")

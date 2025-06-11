@@ -1,6 +1,6 @@
 """Test error reporting and handling functionality."""
 
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
 
 class TestBasicErrorReporting:
@@ -8,7 +8,7 @@ class TestBasicErrorReporting:
 
     def test_syntax_error_reporting(self):
         """Test that syntax errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print('Hello'  # Missing closing parenthesis")
 
             assert not result.success
@@ -18,7 +18,7 @@ class TestBasicErrorReporting:
 
     def test_runtime_error_reporting(self):
         """Test that runtime errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("x = 1 / 0")
 
             assert not result.success
@@ -27,7 +27,7 @@ class TestBasicErrorReporting:
 
     def test_name_error_reporting(self):
         """Test that name errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print(undefined_variable)")
 
             assert not result.success
@@ -36,7 +36,7 @@ class TestBasicErrorReporting:
 
     def test_import_error_reporting(self):
         """Test that import errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("import nonexistent_module")
 
             assert not result.success
@@ -45,7 +45,7 @@ class TestBasicErrorReporting:
 
     def test_indentation_error_reporting(self):
         """Test that indentation errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 if True:
 print("Bad indent")
@@ -56,7 +56,7 @@ print("Bad indent")
 
     def test_type_error_reporting(self):
         """Test that type errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run('"hello" + 5')
 
             assert not result.success
@@ -64,7 +64,7 @@ print("Bad indent")
 
     def test_key_error_reporting(self):
         """Test that key errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run('my_dict = {"a": 1}; print(my_dict["b"])')
 
             assert not result.success
@@ -72,7 +72,7 @@ print("Bad indent")
 
     def test_index_error_reporting(self):
         """Test that index errors are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("my_list = [1, 2, 3]; print(my_list[10])")
 
             assert not result.success
@@ -85,7 +85,7 @@ class TestPartialOutputOnError:
 
     def test_partial_stdout_before_error(self):
         """Test that stdout before error is captured."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 print("Line 1")
 print("Line 2")
@@ -101,7 +101,7 @@ print("This won't print")
 
     def test_partial_output_with_variables(self):
         """Test partial execution with variable assignments."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 x = 10
 y = 20
@@ -117,7 +117,7 @@ print("Won't reach here")
 
     def test_multiple_print_statements_before_error(self):
         """Test multiple print statements before error."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 for i in range(3):
     print(f"Iteration {i}")
@@ -138,7 +138,7 @@ class TestErrorHandlingWithShutdown:
 
     def test_error_with_shutdown_disabled(self):
         """Test that errors don't shutdown container when disabled."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             # First, run code that fails
             result1 = sandbox.run("x = 1 / 0", shutdown_on_failure=False)
             assert not result1.success
@@ -154,7 +154,7 @@ class TestErrorHandlingWithShutdown:
 
     def test_multiple_errors_with_shutdown_disabled(self):
         """Test multiple errors with shutdown disabled."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             # First error
             result1 = sandbox.run("undefined_var", shutdown_on_failure=False)
             assert not result1.success
@@ -172,7 +172,7 @@ class TestErrorHandlingWithShutdown:
 
     def test_error_with_persistence_after_failure(self):
         """Test that state persists after error when shutdown is disabled."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             # Set up some state
             result1 = sandbox.run("counter = 5")
             assert result1.success
@@ -193,7 +193,7 @@ class TestTimeoutHandling:
 
     def test_timeout_error_reporting(self):
         """Test that timeouts are properly reported."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("import time; time.sleep(10)", timeout=2)
 
             assert not result.success
@@ -201,7 +201,7 @@ class TestTimeoutHandling:
 
     def test_timeout_with_partial_output(self):
         """Test timeout with partial output capture."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run(
                 """
 import time
@@ -219,14 +219,14 @@ print("This won't print")
 
     def test_timeout_with_computation(self):
         """Test timeout during intensive computation."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run(
                 """
 print("Starting computation")
 total = 0
-for i in range(10000000):  # Large loop that should timeout
+for i in range(100000000):  # Large loop that should timeout in ~3 seconds
     total += i * i
-    if i % 1000000 == 0:
+    if i % 10000000 == 0:
         print(f"Progress: {i}")
 print(f"Final total: {total}")
 """,
@@ -243,7 +243,7 @@ class TestEnhancedErrorReporting:
 
     def test_syntax_error_with_hint(self):
         """Test syntax error with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print('Hello'  # Missing closing parenthesis")
 
             assert not result.success
@@ -255,7 +255,7 @@ class TestEnhancedErrorReporting:
 
     def test_name_error_with_hint(self):
         """Test name error with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print(undefined_variable)")
 
             assert not result.success
@@ -266,7 +266,7 @@ class TestEnhancedErrorReporting:
 
     def test_zero_division_error_with_hint(self):
         """Test division by zero with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("result = 10 / 0")
 
             assert not result.success
@@ -277,7 +277,7 @@ class TestEnhancedErrorReporting:
 
     def test_import_error_with_hint(self):
         """Test import error with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("import fake_module")
 
             assert not result.success
@@ -288,7 +288,7 @@ class TestEnhancedErrorReporting:
 
     def test_type_error_with_hint(self):
         """Test type error with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run('"hello" + 5')
 
             assert not result.success
@@ -299,7 +299,7 @@ class TestEnhancedErrorReporting:
 
     def test_key_error_with_hint(self):
         """Test key error with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run('my_dict = {"a": 1}; print(my_dict["b"])')
 
             assert not result.success
@@ -310,7 +310,7 @@ class TestEnhancedErrorReporting:
 
     def test_index_error_with_hint(self):
         """Test index error with debugging hint."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("my_list = [1, 2, 3]; print(my_list[10])")
 
             assert not result.success
@@ -325,7 +325,7 @@ class TestAgentErrorIntegration:
 
     def test_structured_error_message(self):
         """Test that error messages are structured for agent consumption."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("undefined_variable")
 
             # Simulate agent processing
@@ -345,7 +345,7 @@ class TestAgentErrorIntegration:
             ('"str" + 5', "Type Error"),
         ]
 
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             for code, expected_category in test_cases:
                 result = sandbox.run(code, shutdown_on_failure=False)
                 assert not result.success
@@ -355,7 +355,7 @@ class TestAgentErrorIntegration:
 
     def test_agent_friendly_error_format(self):
         """Test that errors are formatted in an agent-friendly way."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 print("Starting calculation")
 x = 10 / 0
@@ -424,7 +424,7 @@ class TestErrorRecovery:
 
     def test_error_recovery_with_try_except(self):
         """Test that proper error handling works within the sandbox."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 try:
     x = 1 / 0
@@ -443,7 +443,7 @@ print("Program continued successfully")
 
     def test_graceful_error_handling_pattern(self):
         """Test graceful error handling pattern for robust code."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 def safe_divide(a, b):
     try:

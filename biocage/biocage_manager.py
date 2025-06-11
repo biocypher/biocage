@@ -47,13 +47,13 @@ class SandboxExecutionResult:
         }
 
 
-class PythonSandboxManager:
+class BioCageManager:
     """
     Advanced Python sandbox manager with container lifecycle management,
     file/path exposure, and clean execution interface.
     """
 
-    def __init__(self, image_name: str = "codesandbox:latest", container_name_prefix: str = "codesandbox"):
+    def __init__(self, image_name: str = "biocage:latest", container_name_prefix: str = "biocage"):
         self.image_name = image_name
         self.container_name_prefix = container_name_prefix
         self.container_id: Optional[str] = None
@@ -77,11 +77,11 @@ class PythonSandboxManager:
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to check for Docker image: {e}")
 
-    def build_image(self):
+    def build_image(self, docker_build_dir: str = "."):
         """Build the Docker image."""
         try:
-            print("Building CodeSandbox image...")
-            subprocess.run(["docker", "build", "-t", self.image_name, "."], check=True)
+            print("Building BioCage image...")
+            subprocess.run(["docker", "build", "-t", self.image_name, docker_build_dir])
             print("Image built successfully!")
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to build Docker image: {e}")
@@ -365,6 +365,7 @@ import traceback
 import time
 import types
 import ast
+import signal
 from io import StringIO
 
 # State file for persistence
@@ -413,11 +414,28 @@ result = {
     "error": None
 }
 
+# Create custom output stream that immediately writes to both capture and stdout
+class TeeOutput:
+    def __init__(self, capture, original):
+        self.capture = capture
+        self.original = original
+    
+    def write(self, text):
+        self.capture.write(text)
+        self.original.write(text)
+        self.original.flush()  # Immediately flush output
+        return len(text)
+    
+    def flush(self):
+        self.capture.flush()
+        self.original.flush()
+
 exec_start = time.time()
 
 try:
-    sys.stdout = stdout_capture
-    sys.stderr = stderr_capture
+    # Use tee output to capture AND immediately print output
+    sys.stdout = TeeOutput(stdout_capture, old_stdout)
+    sys.stderr = TeeOutput(stderr_capture, old_stderr)
     
     # Read the user code from stdin
     user_code = sys.stdin.read()
@@ -553,8 +571,54 @@ python /app/workspace/session_exec.py
                     execution_time=execution_time,
                 )
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             execution_time = time.time() - start_time
+
+            # Try to capture any partial output from the interrupted process
+            partial_stdout = ""
+            partial_stderr = ""
+            if hasattr(e, "stdout") and e.stdout:
+                partial_stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout
+            if hasattr(e, "stderr") and e.stderr:
+                partial_stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr
+
+            # Try to get output from container logs as backup
+            try:
+                # Try to get container output
+                log_result = subprocess.run(
+                    ["docker", "logs", "--tail", "100", self.container_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if log_result.stdout:
+                    # The TeeOutput will write directly to stdout, so capture that
+                    # Filter out JSON lines and get the actual output
+                    lines = log_result.stdout.strip().split("\n")
+                    stdout_lines = []
+                    for line in lines:
+                        # Skip JSON result lines
+                        if line.startswith("{") and '"stdout"' in line:
+                            continue
+                        stdout_lines.append(line)
+
+                    if stdout_lines:
+                        partial_stdout = "\n".join(stdout_lines)
+
+                    # Also try to parse any JSON at the end
+                    for line in reversed(lines):
+                        if line.startswith("{"):
+                            try:
+                                result_data = json.loads(line)
+                                captured_stdout = result_data.get("stdout", "")
+                                if captured_stdout and not partial_stdout:
+                                    partial_stdout = captured_stdout
+                                break
+                            except:
+                                continue
+            except:
+                pass
+
             # Try to stop any hanging processes in the container
             try:
                 subprocess.run(
@@ -564,7 +628,11 @@ python /app/workspace/session_exec.py
                 pass  # Best effort cleanup
 
             return SandboxExecutionResult(
-                error=f"Code execution timed out after {timeout} seconds", exit_code=124, execution_time=execution_time
+                stdout=partial_stdout,
+                stderr=partial_stderr,
+                error=f"Code execution timed out after {timeout} seconds",
+                exit_code=124,
+                execution_time=execution_time,
             )
         except Exception as e:
             execution_time = time.time() - start_time
@@ -676,7 +744,7 @@ python /app/workspace/session_exec.py
         expose_directories: Optional[Dict[str, str]] = None,
         expose_directories_rw: Optional[Dict[str, str]] = None,
         **kwargs,
-    ) -> "PythonSandboxManager":
+    ) -> "BioCageManager":
         """
         Configure parameters for when using the context manager (with statement).
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
 
 @pytest.fixture(scope="session")
@@ -24,7 +24,7 @@ def docker_available():
 @pytest.fixture
 def sandbox():
     """Provide a fresh sandbox instance for each test."""
-    sandbox = PythonSandboxManager()
+    sandbox = BioCageManager()
     yield sandbox
 
     # Cleanup after test
@@ -35,7 +35,7 @@ def sandbox():
 @pytest.fixture
 def persistent_sandbox():
     """Provide a sandbox with a started container for persistence tests."""
-    sandbox = PythonSandboxManager()
+    sandbox = BioCageManager()
     sandbox.start_container()
 
     yield sandbox

@@ -1,5 +1,5 @@
 [project]
-name = "CodeSandbox"
+name = "BioCage"
 version = "0.0.1"
 description = "This project aims at defining a fast, snappy and practical python sandbox that can be used with LLMs"
 authors = [{ name = "Francesco Carli", email = "francesco.carli94@gmail.com" }]

@@ -18,4 +18,4 @@ COPY . /app
 # Sync the project
 RUN uv sync --frozen
 
-CMD [ "python", "codesandbox/foo.py" ]
+CMD [ "python", "-c", "import biocage; print('BioCage package imported successfully')" ]

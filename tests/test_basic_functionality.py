@@ -1,6 +1,6 @@
 """Test basic sandbox functionality."""
 
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
 
 class TestBasicExecution:
@@ -8,7 +8,7 @@ class TestBasicExecution:
 
     def test_simple_execution(self):
         """Test basic code execution."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print('Hello from sandbox!')")
             assert result.success
             assert "Hello from sandbox!" in result.stdout
@@ -17,7 +17,7 @@ class TestBasicExecution:
 
     def test_multiple_statements(self):
         """Test execution of multiple statements."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 x = 10
 y = 20
@@ -28,7 +28,7 @@ print(f"Sum: {x + y}")
 
     def test_return_values(self):
         """Test that result object contains expected attributes."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print('test')")
 
             # Check all expected attributes exist
@@ -41,14 +41,14 @@ print(f"Sum: {x + y}")
 
     def test_timeout_handling(self):
         """Test timeout functionality."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("import time; time.sleep(10)", timeout=2)
             assert not result.success
             assert result.exit_code == 124  # Timeout exit code
 
     def test_container_info(self):
         """Test getting container information."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             info = sandbox.get_container_info()
             assert info["is_running"] is True
             assert info["container_id"] is not None
@@ -62,7 +62,7 @@ class TestContainerManagement:
 
     def test_context_manager(self):
         """Test context manager functionality."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             assert sandbox.is_running
             result = sandbox.run("print('Context manager works')")
             assert result.success
@@ -70,7 +70,7 @@ class TestContainerManagement:
 
     def test_manual_container_management(self):
         """Test manual container start/stop."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         assert not sandbox.is_running
 
         try:
@@ -85,7 +85,7 @@ class TestContainerManagement:
 
     def test_custom_resources(self):
         """Test container with custom resource limits."""
-        with PythonSandboxManager().configure_context_manager(memory_limit="512m", cpu_limit="1.0") as sandbox:
+        with BioCageManager().configure_context_manager(memory_limit="512m", cpu_limit="1.0") as sandbox:
             result = sandbox.run("print('Custom resources')")
             assert result.success
 
@@ -94,7 +94,7 @@ class TestContainerManagement:
 
     def test_restart_container(self):
         """Test container restart functionality."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
 
         try:
             # Start initial container
@@ -117,7 +117,7 @@ class TestSecurity:
 
     def test_network_isolation(self):
         """Test that network access is blocked."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 import urllib.request
 try:
@@ -132,7 +132,7 @@ except Exception as e:
 
     def test_filesystem_isolation(self):
         """Test that filesystem is properly isolated."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 import os
 try:
@@ -151,7 +151,7 @@ except Exception as e:
 
     def test_write_protection(self):
         """Test that root filesystem is read-only."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 import os
 try:
@@ -171,7 +171,7 @@ class TestErrorHandling:
 
     def test_syntax_error(self):
         """Test syntax error handling."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print('Hello'  # Missing closing parenthesis")
             assert not result.success
             assert "SyntaxError" in result.stderr
@@ -179,28 +179,28 @@ class TestErrorHandling:
 
     def test_runtime_error(self):
         """Test runtime error handling."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("x = 1 / 0")
             assert not result.success
             assert "ZeroDivisionError" in result.stderr
 
     def test_name_error(self):
         """Test name error handling."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("print(undefined_variable)")
             assert not result.success
             assert "NameError" in result.stderr
 
     def test_import_error(self):
         """Test import error handling."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("import nonexistent_module")
             assert not result.success
             assert "ModuleNotFoundError" in result.stderr
 
     def test_partial_output_on_error(self):
         """Test that partial output is captured before error."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("""
 print("This should appear")
 x = 1 / 0
@@ -213,7 +213,7 @@ print("This should not appear")
 
     def test_error_with_shutdown_disabled(self):
         """Test error handling with shutdown_on_failure=False."""
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run("x = 1 / 0", shutdown_on_failure=False)
             assert not result.success
             # Container should still be running

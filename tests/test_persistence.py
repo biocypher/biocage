@@ -1,6 +1,6 @@
 """Test state persistence functionality."""
 
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
 
 class TestVariablePersistence:
@@ -8,7 +8,7 @@ class TestVariablePersistence:
 
     def test_basic_variable_persistence(self):
         """Test that basic variables persist between executions."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -26,7 +26,7 @@ class TestVariablePersistence:
 
     def test_variable_modification(self):
         """Test that variables can be modified and persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -43,7 +43,7 @@ class TestVariablePersistence:
 
     def test_complex_data_structures(self):
         """Test persistence of complex data structures."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -78,7 +78,7 @@ class TestImportPersistence:
 
     def test_standard_imports(self):
         """Test that standard library imports persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -96,7 +96,7 @@ class TestImportPersistence:
 
     def test_import_aliases(self):
         """Test that import aliases persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -116,7 +116,7 @@ print(f"DataFrame shape: {df.shape}")
 
     def test_from_imports(self):
         """Test that 'from' imports persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -143,7 +143,7 @@ class TestFunctionPersistence:
 
     def test_simple_function_persistence(self):
         """Test that function definitions persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -172,7 +172,7 @@ print(f"Calculation: {calc_result}")
 
     def test_function_with_closure(self):
         """Test that functions with closures persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -205,7 +205,7 @@ print("Counter function created")
 
     def test_class_definition_persistence(self):
         """Test that class definitions persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -257,7 +257,7 @@ class TestDataFramePersistence:
 
     def test_dataframe_creation_and_persistence(self):
         """Test that DataFrames persist between executions."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -289,7 +289,7 @@ print(f"Cities: {list(df['city'])}")
 
     def test_dataframe_modification(self):
         """Test DataFrame modifications persist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -327,7 +327,7 @@ print(f"Bob total: {df.loc[1, 'total']}")
 
     def test_multiple_dataframes(self):
         """Test that multiple DataFrames can coexist."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:
@@ -363,7 +363,7 @@ class TestMixedPersistence:
 
     def test_variables_imports_functions_together(self):
         """Test that variables, imports, and functions all persist together."""
-        sandbox = PythonSandboxManager()
+        sandbox = BioCageManager()
         sandbox.start_container()
 
         try:

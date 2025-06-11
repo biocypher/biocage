@@ -1,5 +1,5 @@
 [project]
-name = "CodeSandbox"
+name = "BioCage"
 version = "0.1.0"
 description = "Toml used to describe the environment used by the sandbox"
 readme = "README.md"
