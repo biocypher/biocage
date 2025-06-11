@@ -1,5 +1,10 @@
 # BioCage
 
+<div align="center">
+  <img src="logo.png" alt="BioCage Logo" width="300">
+</div>
+
+
 [![Release](https://img.shields.io/github/v/release/biocypher/biocage)](https://img.shields.io/github/v/release/biocypher/biocage)
 [![Build status](https://img.shields.io/github/actions/workflow/status/biocypher/biocage/main.yml?branch=main)](https://github.com/biocypher/biocage/actions/workflows/main.yml?query=branch%3Amain)
 [![Coverage](./coverage.svg)](./coverage.svg)
