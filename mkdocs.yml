@@ -1,15 +1,15 @@
-site_name: CodeSandbox
-repo_url: https://github.com/fcarli/CodeSandbox
-site_url: https://fcarli.github.io/CodeSandbox
+site_name: BioCage
+repo_url: https://github.com/biocypher/biocage
+site_url: https://biocypher.github.io/biocage
 site_description: This project aims at defining a fast, snappy and practical python sandbox that can be used with LLMs
 site_author: Francesco Carli
 edit_uri: edit/main/docs/
-repo_name: fcarli/CodeSandbox
+repo_name: biocypher/biocage
 copyright: Maintained by <a href="https://fcarli.com">fcarli</a>.
 
 nav:
   - Home: index.md
-  - PythonSandboxManager Features: pythonsandboxmanager-features.md
+  - BioCageManager Features: biocagemanager-features.md
   - Docker Setup: docker-setup.md
   - API Reference: modules.md
 plugins:
@@ -43,9 +43,9 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/fcarli/CodeSandbox
+      link: https://github.com/biocypher/biocage
     - icon: fontawesome/brands/python
-      link: https://pypi.org/project/CodeSandbox
+      link: https://pypi.org/project/BioCage
 
 markdown_extensions:
   - toc:

@@ -1,6 +1,6 @@
-# PythonSandboxManager Features & Usage
+# BioCageManager Features & Usage
 
-The `PythonSandboxManager` is the core component that provides comprehensive functionality for safe code execution with state management, file system integration, and advanced container lifecycle control.
+The `BioCageManager` is the core component that provides comprehensive functionality for safe code execution with state management, file system integration, and advanced container lifecycle control.
 
 ## Container Management
 
@@ -11,7 +11,7 @@ The sandbox supports two execution modes:
 **Ephemeral Containers** (Default with context managers):
 ```python
 # Automatic cleanup with context manager
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     result = sandbox.run("print('Hello from ephemeral container!')")
     # Container automatically destroyed when exiting context
 ```
@@ -19,7 +19,7 @@ with PythonSandboxManager() as sandbox:
 **Persistent Containers** (Manual lifecycle management):
 ```python
 # Manual container management for multi-execution workflows
-sandbox = PythonSandboxManager()
+sandbox = BioCageManager()
 sandbox.start_container(memory_limit="2g", cpu_limit="4.0")
 
 try:
@@ -37,7 +37,7 @@ Configure container resources and security settings:
 
 ```python
 # Start container with custom resources
-sandbox = PythonSandboxManager()
+sandbox = BioCageManager()
 sandbox.start_container(
     memory_limit="4g",        # 4GB memory limit
     cpu_limit="8.0",          # 8 CPU cores
@@ -57,7 +57,7 @@ Configure containers using method chaining for cleaner code:
 
 ```python
 # High-performance data science setup
-with PythonSandboxManager().configure_context_manager(
+with BioCageManager().configure_context_manager(
     memory_limit="8g",
     cpu_limit="4.0",
     expose_files={"/path/to/dataset.csv": "/app/data/dataset.csv"},
@@ -73,14 +73,14 @@ with PythonSandboxManager().configure_context_manager(
 
 ## State Persistence
 
-One of the key features of PythonSandboxManager is state persistence between executions in the same container.
+One of the key features of BioCageManager is state persistence between executions in the same container.
 
 ### Variable Persistence
 
 Variables maintain their values across multiple executions:
 
 ```python
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     # Set variables in first execution
     sandbox.run('x = 42; y = "hello"; data = {"nums": [1,2,3]}')
     
@@ -94,7 +94,7 @@ with PythonSandboxManager() as sandbox:
 Imported modules and their aliases persist between executions:
 
 ```python
-sandbox = PythonSandboxManager()
+sandbox = BioCageManager()
 sandbox.start_container()
 
 try:
@@ -119,7 +119,7 @@ finally:
 Define functions and classes that persist across executions:
 
 ```python
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     # Define functions and classes
     sandbox.run("""
     def greet(name):
@@ -154,7 +154,7 @@ with PythonSandboxManager() as sandbox:
 Pandas DataFrames and their modifications persist between executions:
 
 ```python
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     # Create and modify DataFrames across multiple executions
     sandbox.run("""
     import pandas as pd
@@ -184,7 +184,7 @@ Expose individual files from the host to the container:
 
 ```python
 # Method 1: Manual file exposure
-sandbox = PythonSandboxManager()
+sandbox = BioCageManager()
 container_path = sandbox.expose_file("/path/to/data.csv", "/app/shared/data.csv")
 
 with sandbox:
@@ -195,7 +195,7 @@ with sandbox:
     """)
 
 # Method 2: Context manager configuration
-with PythonSandboxManager().configure_context_manager(
+with BioCageManager().configure_context_manager(
     expose_files={
         "/path/to/data.csv": "/app/shared/data.csv",
         "/path/to/config.json": "/app/config/settings.json"
@@ -222,7 +222,7 @@ Expose directories with read-only or read-write access:
 
 ```python
 # Read-only directory access
-with PythonSandboxManager().configure_context_manager(
+with BioCageManager().configure_context_manager(
     expose_directories={"/path/to/models": "/app/models"}
 ) as sandbox:
     result = sandbox.run("""
@@ -232,7 +232,7 @@ with PythonSandboxManager().configure_context_manager(
     """)
 
 # Read-write directory access
-with PythonSandboxManager().configure_context_manager(
+with BioCageManager().configure_context_manager(
     expose_directories_rw={"/path/to/output": "/app/output"}
 ) as sandbox:
     sandbox.run("""
@@ -247,7 +247,7 @@ with PythonSandboxManager().configure_context_manager(
     """)
 
 # Combined read-only input and read-write output
-with PythonSandboxManager().configure_context_manager(
+with BioCageManager().configure_context_manager(
     expose_directories={"/path/to/input": "/app/input"},      # Read-only
     expose_directories_rw={"/path/to/output": "/app/output"}  # Read-write
 ) as sandbox:
@@ -270,7 +270,7 @@ with PythonSandboxManager().configure_context_manager(
 Create temporary files with custom content that are automatically cleaned up:
 
 ```python
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     # Create temporary CSV file
     csv_content = """name,age,city
 Alice,25,New York
@@ -310,7 +310,7 @@ Handle different types of errors gracefully:
 ```python
 def safe_execute(code, description=""):
     try:
-        with PythonSandboxManager() as sandbox:
+        with BioCageManager() as sandbox:
             result = sandbox.run(code, timeout=30, shutdown_on_failure=False)
             
             if result.success:
@@ -334,7 +334,7 @@ Provide detailed error categorization with debugging hints:
 
 ```python
 def enhanced_error_reporting(code, description):
-    with PythonSandboxManager() as sandbox:
+    with BioCageManager() as sandbox:
         result = sandbox.run(code, shutdown_on_failure=False)
         
         if result.stderr:
@@ -373,7 +373,7 @@ Control execution timeouts and resource usage:
 
 ```python
 # Timeout handling
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     # This will timeout after 5 seconds
     result = sandbox.run("import time; time.sleep(10)", timeout=5)
     
@@ -383,7 +383,7 @@ with PythonSandboxManager() as sandbox:
         print(f"✅ Completed in {result.execution_time:.2f}s")
 
 # Resource monitoring
-with PythonSandboxManager().configure_context_manager(
+with BioCageManager().configure_context_manager(
     memory_limit="1g",
     cpu_limit="2.0"
 ) as sandbox:
@@ -416,7 +416,7 @@ def robust_execution(code_snippets):
     
     for i, code in enumerate(code_snippets):
         try:
-            with PythonSandboxManager() as sandbox:
+            with BioCageManager() as sandbox:
                 # Enable automatic shutdown on failure
                 result = sandbox.run(code, shutdown_on_failure=True)
                 
@@ -451,7 +451,7 @@ def data_analysis_workflow(data_path, output_dir):
     """Complete data analysis workflow with state persistence."""
     
     # Configure sandbox with input data and output directory
-    with PythonSandboxManager().configure_context_manager(
+    with BioCageManager().configure_context_manager(
         memory_limit="4g",
         cpu_limit="2.0",
         expose_files={data_path: "/app/data/dataset.csv"},
@@ -532,7 +532,7 @@ class SecureCodeAgent:
         }
         
         try:
-            with PythonSandboxManager().configure_context_manager(
+            with BioCageManager().configure_context_manager(
                 memory_limit=self.memory_limit,
                 cpu_limit="1.0"
             ) as sandbox:
@@ -654,13 +654,13 @@ If you're currently using basic sandbox functionality and want to leverage advan
 
 ```python
 # Old basic usage
-from codesandbox import PythonSandboxManager
+from biocage import BioCageManager
 
-with PythonSandboxManager() as sandbox:
+with BioCageManager() as sandbox:
     result = sandbox.run("print('Hello')")
 
 # New advanced usage with state persistence and file integration
-sandbox = PythonSandboxManager()
+sandbox = BioCageManager()
 sandbox.start_container(memory_limit="2g")
 
 # Expose data files
