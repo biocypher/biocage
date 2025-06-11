@@ -743,7 +743,7 @@ python /app/workspace/session_exec.py
         expose_files: Optional[Dict[str, str]] = None,
         expose_directories: Optional[Dict[str, str]] = None,
         expose_directories_rw: Optional[Dict[str, str]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> "BioCageManager":
         """
         Configure parameters for when using the context manager (with statement).
@@ -806,7 +806,7 @@ python /app/workspace/session_exec.py
 
         return self
 
-    def restart_container(self, **kwargs) -> str:
+    def restart_container(self, **kwargs: Any) -> str:
         """
         Restart the container (stop if running, then start with new parameters).
 
