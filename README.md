@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/biocypher/biocage)](https://img.shields.io/github/v/release/biocypher/biocage)
 [![Build status](https://img.shields.io/github/actions/workflow/status/biocypher/biocage/main.yml?branch=main)](https://github.com/biocypher/biocage/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/biocypher/biocage/branch/main/graph/badge.svg)](https://codecov.io/gh/biocypher/biocage)
+[![Coverage](./coverage.svg)](./coverage.svg)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/biocypher/biocage)](https://img.shields.io/github/commit-activity/m/biocypher/biocage)
 [![License](https://img.shields.io/github/license/biocypher/biocage)](https://img.shields.io/github/license/biocypher/biocage)
 
