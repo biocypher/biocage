@@ -113,6 +113,8 @@ check: ## Run code quality tools.
 test: ## Test the code with pytest
 	@echo "🚀 Testing code: Running pytest"
 	@uv run python -m pytest --cov --cov-config=pyproject.toml --cov-report=xml
+	@echo "🚀 Generating coverage badge"
+	@uv run coverage-badge -f -o coverage.svg
 
 .PHONY: build
 build: clean-build ## Build wheel file
