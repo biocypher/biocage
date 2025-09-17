@@ -5,13 +5,39 @@ file/path exposure, and clean execution interface.
 """
 
 import json
+import logging
 import os
 import subprocess
 import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
+
+from .constants import (
+    DEFAULT_CPU_LIMIT,
+    DEFAULT_IMAGE_NAME,
+    DEFAULT_MEMORY_LIMIT,
+    DEFAULT_CONTAINER_PREFIX,
+    ERROR_CONTAINER_RUNNING,
+    LOG_CONTAINER_STARTED,
+    LOG_CONTAINER_STOPPED,
+    LOG_IMAGE_BUILT,
+    LOG_IMAGE_NOT_FOUND,
+    LOG_BUILDING_IMAGE,
+    NETWORK_DISABLED,
+)
+from .validation import (
+    validate_code_input,
+    validate_cpu_limit,
+    validate_file_suffix,
+    validate_memory_limit,
+    validate_path_exists,
+    validate_timeout,
+)
+
+# Configure logger for BioCage
+logger = logging.getLogger(__name__)
 
 
 class SandboxExecutionResult:
@@ -35,7 +61,7 @@ class SandboxExecutionResult:
     def __repr__(self):
         return f"SandboxExecutionResult(exit_code={self.exit_code}, success={self.success})"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "stdout": self.stdout,
@@ -53,18 +79,18 @@ class BioCageManager:
     file/path exposure, and clean execution interface.
     """
 
-    def __init__(self, image_name: str = "biocage:latest", container_name_prefix: str = "biocage"):
+    def __init__(self, image_name: str = DEFAULT_IMAGE_NAME, container_name_prefix: str = DEFAULT_CONTAINER_PREFIX):
         self.image_name = image_name
         self.container_name_prefix = container_name_prefix
         self.container_id: Optional[str] = None
         self.container_name: Optional[str] = None
         self.is_running = False
-        self.exposed_paths: Dict[str, Dict[str, str]] = {}  # host_path -> {"container_path": str, "mount_option": str}
-        self.temp_files: List[str] = []  # Track temporary files for cleanup
-        self._context_manager_kwargs: Dict[str, Any] = {}  # Store kwargs for context manager
+        self.exposed_paths: dict[str, dict[str, str]] = {}  # host_path -> {"container_path": str, "mount_option": str}
+        self.temp_files: list[str] = []  # Track temporary files for cleanup
+        self._context_manager_kwargs: dict[str, Any] = {}  # Store kwargs for context manager
         self._ensure_image_exists()
 
-    def _ensure_image_exists(self):
+    def _ensure_image_exists(self) -> None:
         """Check if the Docker image exists, build it if not."""
         try:
             result = subprocess.run(
@@ -72,21 +98,21 @@ class BioCageManager:
             )
 
             if not result.stdout.strip():
-                print(f"Image {self.image_name} not found. Building...")
+                logger.info(LOG_IMAGE_NOT_FOUND.format(self.image_name))
                 self.build_image()
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to check for Docker image: {e}")
 
-    def build_image(self, docker_build_dir: str = "."):
+    def build_image(self, docker_build_dir: str = ".") -> None:
         """Build the Docker image."""
         try:
-            print("Building BioCage image...")
+            logger.info(LOG_BUILDING_IMAGE)
             subprocess.run(["docker", "build", "-t", self.image_name, docker_build_dir])
-            print("Image built successfully!")
+            logger.info(LOG_IMAGE_BUILT)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to build Docker image: {e}")
 
-    def start_container(self, memory_limit: str = "512m", cpu_limit: str = "1.0", network_access: bool = False) -> str:
+    def start_container(self, memory_limit: str = DEFAULT_MEMORY_LIMIT, cpu_limit: str = DEFAULT_CPU_LIMIT, network_access: bool = False) -> str:
         """
         Start a persistent container with a long-running Python process.
 
@@ -97,9 +123,22 @@ class BioCageManager:
 
         Returns:
             Container ID
+
+        Raises:
+            RuntimeError: If container is already running or if container start fails
+
+        Example:
+            >>> sandbox = BioCageManager()
+            >>> container_id = sandbox.start_container(memory_limit="1g", cpu_limit="2.0")
+            >>> # Use sandbox for persistent code execution
+            >>> sandbox.stop_container()
         """
         if self.is_running:
-            raise RuntimeError("Container is already running. Call stop_container() first.")
+            raise RuntimeError(ERROR_CONTAINER_RUNNING)
+
+        # Validate inputs
+        validate_memory_limit(memory_limit)
+        validate_cpu_limit(cpu_limit)
 
         # Generate unique container name
         self.container_name = f"{self.container_name_prefix}-{uuid.uuid4().hex[:8]}"
@@ -122,7 +161,7 @@ class BioCageManager:
 
         # Network configuration
         if not network_access:
-            docker_cmd.append("--network=none")
+            docker_cmd.append(NETWORK_DISABLED)
 
         # Add volume mounts for exposed paths
         for host_path, path_info in self.exposed_paths.items():
@@ -141,12 +180,12 @@ class BioCageManager:
             # Wait a moment for the persistent executor to start
             time.sleep(0.5)
 
-            print(f"Container started: {self.container_name} ({self.container_id[:12]})")
+            logger.info(LOG_CONTAINER_STARTED.format(self.container_name, self.container_id[:12]))
             return self.container_id
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to start container: {e.stderr}")
 
-    def stop_container(self):
+    def stop_container(self) -> None:
         """Stop and remove the container."""
         if not self.is_running or not self.container_name:
             return
@@ -158,9 +197,9 @@ class BioCageManager:
             # Remove the container
             subprocess.run(["docker", "rm", self.container_name], capture_output=True, check=True)
 
-            print(f"Container stopped and removed: {self.container_name}")
+            logger.info(LOG_CONTAINER_STOPPED.format(self.container_name))
         except subprocess.CalledProcessError as e:
-            print(f"Warning: Failed to clean up container {self.container_name}: {e}")
+            logger.warning(f"Failed to clean up container {self.container_name}: {e}")
         finally:
             self.container_id = None
             self.container_name = None
@@ -198,7 +237,7 @@ class BioCageManager:
 
         # If container is running, we need to restart it to apply new mounts
         if self.is_running:
-            print("Restarting container to apply new path mapping...")
+            logger.info("Restarting container to apply new path mapping...")
             self.stop_container()
             self.start_container()
 
@@ -239,10 +278,19 @@ class BioCageManager:
 
         Args:
             content: File content
-            suffix: File suffix
+            suffix: File suffix (default: ".py")
 
         Returns:
             Container path to the temporary file
+
+        Raises:
+            Exception: If file creation or exposure fails
+
+        Example:
+            >>> sandbox = BioCageManager()
+            >>> csv_data = "name,age\\nAlice,25\\nBob,30"
+            >>> temp_path = sandbox.create_temp_file(csv_data, suffix=".csv")
+            >>> result = sandbox.run(f'import pandas as pd; df = pd.read_csv("{temp_path}")')
         """
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False)
 
@@ -274,14 +322,41 @@ class BioCageManager:
 
         Args:
             code: Python code to execute
-            timeout: Timeout in seconds
+            timeout: Timeout in seconds (default: 30)
             stdin_input: Optional stdin input for the code
             shutdown_on_failure: Whether to shutdown sandbox on execution failure
 
         Returns:
             SandboxExecutionResult with stdout, stderr, and metadata
+
+        Raises:
+            Exception: If critical execution failure occurs
+
+        Examples:
+            Basic execution:
+            >>> with BioCageManager() as sandbox:
+            ...     result = sandbox.run('print("Hello World")')
+            ...     print(result.stdout)  # "Hello World"
+
+            With timeout and error handling:
+            >>> result = sandbox.run('import time; time.sleep(10)', timeout=5)
+            >>> if not result.success:
+            ...     print(f"Failed: {result.error}")
         """
         start_time = time.time()
+
+        # Validate inputs
+        validate_timeout(timeout)
+
+        # Handle empty code gracefully
+        if not code.strip():
+            return SandboxExecutionResult(
+                stdout="",
+                stderr="",
+                exit_code=0,
+                execution_time=0.0,
+                error=None,
+            )
 
         try:
             if self.is_running:
@@ -309,7 +384,7 @@ class BioCageManager:
 
             return result
 
-    def _handle_execution_failure(self, result: SandboxExecutionResult):
+    def _handle_execution_failure(self, result: SandboxExecutionResult) -> None:
         """
         Handle execution failure by logging and optionally shutting down the sandbox.
 
@@ -330,32 +405,41 @@ class BioCageManager:
 
         failure_type = ", ".join(failure_reasons) if failure_reasons else "unknown"
 
-        print(f"⚠️  Sandbox execution failed ({failure_type}). Shutting down container for safety.")
+        logger.warning(f"Sandbox execution failed ({failure_type}). Shutting down container for safety.")
 
-        # Log failure details (you can enhance this for better logging)
+        # Log failure details
         if result.error:
-            print(f"   Error: {result.error}")
+            logger.error(f"Execution error: {result.error}")
         if result.stderr.strip():
-            print(f"   Stderr: {result.stderr.strip()}")
+            logger.error(f"Stderr output: {result.stderr.strip()}")
         if result.exit_code != 0:
-            print(f"   Exit code: {result.exit_code}")
+            logger.error(f"Exit code: {result.exit_code}")
 
         # Shutdown the container if it's running
         if self.is_running:
             try:
                 self.stop_container()
-                print("✅ Container shutdown completed.")
+                logger.info("Container shutdown completed.")
             except Exception as e:
-                print(f"❌ Failed to shutdown container: {e}")
+                logger.error(f"Failed to shutdown container: {e}")
 
     def _run_in_persistent_container(
         self, code: str, timeout: int, stdin_input: Optional[str]
     ) -> SandboxExecutionResult:
-        """Run code in a persistent container with state persistence using stdin piping."""
+        """Run code in a persistent container with state persistence using stdin piping.
+
+        This method handles the complex logic of:
+        1. Creating a Python execution script for state persistence
+        2. Managing variable/import/function persistence across executions
+        3. Executing code via stdin piping to the container
+        4. Parsing execution results from JSON output
+        5. Handling timeouts and container cleanup
+        """
         start_time = time.time()
 
         try:
-            # Create the session execution script that reads code from stdin
+            # Create the session execution script that manages state persistence
+            # This script will be executed inside the container and reads user code from stdin
             session_script = """
 import sys
 import json
@@ -520,10 +604,12 @@ finally:
 print(json.dumps(result))
 """
 
-            # Create a command that writes the session script and executes it with user code
+            # Combine the session script and user code with a separator
+            # The shell script below will split them and execute appropriately
             combined_input = f"{session_script}\n---ENDSCRIPT---\n{code}"
 
-            # Execute using a shell command that splits the input
+            # Shell command to split input at separator and execute the session script
+            # This allows us to pass both the session script and user code in one input stream
             shell_cmd = """
 # Read input until separator
 session_script=""
@@ -542,14 +628,16 @@ echo "$session_script" > /app/workspace/session_exec.py
 python /app/workspace/session_exec.py
 """
 
+            # Execute the shell command inside the container with combined input
             exec_cmd = ["docker", "exec", "-i", self.container_name, "sh", "-c", shell_cmd]
 
-            # Run with timeout
+            # Run with timeout - this executes the session script with user code
             process = subprocess.run(exec_cmd, input=combined_input, capture_output=True, text=True, timeout=timeout)
 
             execution_time = time.time() - start_time
 
-            # Parse JSON result from the last line
+            # Parse JSON result from the last line of output
+            # The session script outputs execution results as JSON on the last line
             try:
                 lines = process.stdout.strip().split("\n")
                 json_line = lines[-1] if lines else "{}"
@@ -711,7 +799,7 @@ python /app/workspace/session_exec.py
             execution_time = time.time() - start_time
             return SandboxExecutionResult(error=f"Execution error: {e!s}", exit_code=1, execution_time=execution_time)
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean up resources (containers, temporary files, etc.)."""
         # Stop container if running
         if self.is_running:
@@ -728,21 +816,21 @@ python /app/workspace/session_exec.py
         # Clear exposed paths
         self.exposed_paths.clear()
 
-    def __enter__(self):
+    def __enter__(self) -> "BioCageManager":
         """Context manager entry."""
         if not self.is_running:
             self.start_container(**self._context_manager_kwargs)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit - cleanup resources."""
         self.cleanup()
 
     def configure_context_manager(
         self,
-        expose_files: Optional[Dict[str, str]] = None,
-        expose_directories: Optional[Dict[str, str]] = None,
-        expose_directories_rw: Optional[Dict[str, str]] = None,
+        expose_files: Optional[dict[str, str]] = None,
+        expose_directories: Optional[dict[str, str]] = None,
+        expose_directories_rw: Optional[dict[str, str]] = None,
         **kwargs: Any,
     ) -> "BioCageManager":
         """
@@ -820,7 +908,7 @@ python /app/workspace/session_exec.py
             self.stop_container()
         return self.start_container(**kwargs)
 
-    def get_container_info(self) -> Dict[str, Any]:
+    def get_container_info(self) -> dict[str, Any]:
         """Get information about the current container."""
         return {
             "container_id": self.container_id,

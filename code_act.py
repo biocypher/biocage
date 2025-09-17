@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import Annotated, TypedDict
 
@@ -7,7 +8,10 @@ from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Command
 
-from codesandbox.sandbox_manager import PythonSandboxManager
+from biocage.biocage_manager import BioCageManager
+
+# Configure logger for code_act
+logger = logging.getLogger(__name__)
 
 BACKTICK_PATTERN = r"(?:^|\n)```(.*?)(?:```(?:\n|$))"
 
@@ -89,7 +93,7 @@ def call_model(state: AgentState) -> Command:
 def run_sandbox(state: AgentState) -> dict:
     # Ensure sandbox is running (restart if needed)
     if not sandbox_manager.is_running:
-        print("🔄 Restarting sandbox container...")
+        logger.info("Restarting sandbox container...")
         sandbox_manager.restart_container()
 
     # For conversational agents, we may want to be more lenient with errors
@@ -183,7 +187,7 @@ After running code, provide a summary of the results and how they address the us
     # sandbox = PythonSandboxManager()
     # sandbox.start_container()
     # Create sandbox manager instance with WRITABLE directory
-    with PythonSandboxManager().configure_context_manager(
+    with BioCageManager().configure_context_manager(
         expose_directories_rw={"/Users/carli/Projects/code_sandbox/vault": "/app/output"}
     ) as sandbox_manager:
         # Define the graph of execution
