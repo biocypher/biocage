@@ -268,4 +268,36 @@ with BioCageOrchestrator() as sandbox:
         result = sandbox.run("safe_alternative()")
 ```
 
+### Smart Dependency Detection
+
+BioCage can automatically detect third-party dependencies and build custom Docker images:
+
+```python
+# Enable automatic dependency detection
+with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+    # BioCage detects pandas, numpy, matplotlib and builds image
+    result = sandbox.run("""
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Create and analyze data
+data = pd.DataFrame({
+    'x': np.random.randn(100),
+    'y': np.random.randn(100)
+})
+print(f"Generated {len(data)} data points")
+""")
+    print(result.stdout)
+```
+
+**Features:**
+- 🎯 Automatic import detection from Python code
+- 🐳 Dynamic Docker image generation with UV package manager
+- ⚡ Intelligent caching for performance
+- 📊 Support for data science libraries (pandas, numpy, matplotlib, etc.)
+- 💾 Compatible with both persistent and ephemeral modes
+
+> 💡 **Tip**: Smart dependency detection eliminates manual Docker image management while maintaining security and performance.
+
 Happy coding with BioCage! 🚀

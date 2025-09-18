@@ -32,12 +32,8 @@ import matplotlib.pyplot as plt
     expected = {"pandas", "numpy", "scikit-learn", "matplotlib"}
     detected = set(deps.keys())
 
-    if expected.issubset(detected):
-        print("✓ Dependency analyzer test passed")
-        return True
-    else:
-        print(f"✗ Dependency analyzer test failed. Expected: {expected}, Got: {detected}")
-        return False
+    assert expected.issubset(detected), f"Expected: {expected}, Got: {detected}"
+    print("✓ Dependency analyzer test passed")
 
 
 def test_dockerfile_generator():
@@ -61,12 +57,8 @@ def test_dockerfile_generator():
         "USER sandbox" in dockerfile,
     ]
 
-    if all(checks):
-        print("✓ Dockerfile generator test passed")
-        return True
-    else:
-        print(f"✗ Dockerfile generator test failed. Missing: {checks}")
-        return False
+    assert all(checks), f"Missing components in Dockerfile: {checks}"
+    print("✓ Dockerfile generator test passed")
 
 
 def test_image_name_generation():
@@ -88,48 +80,37 @@ def test_image_name_generation():
     print(f"Dependencies 3: {dependencies3} -> {name3}")
 
     # Same dependencies should generate same name
-    if name1 == name2 and name1 != name3:
-        print("✓ Image name generation test passed")
-        return True
-    else:
-        print("✗ Image name generation test failed")
-        return False
+    assert name1 == name2, "Same dependencies should generate same name"
+    assert name1 != name3, "Different dependencies should generate different names"
+    print("✓ Image name generation test passed")
 
 
 def test_smart_image_manager():
     """Test the smart image manager (without actually building images)."""
     print("\nTesting SmartImageManager...")
 
-    try:
-        manager = SmartImageManager()
+    manager = SmartImageManager()
 
-        # Test with no dependencies (should return default image)
-        code1 = "print('Hello World')"
-        image1 = manager.get_or_create_image(code1)
-        print(f"Code: {code1} -> Image: {image1}")
+    # Test with no dependencies (should return default image)
+    code1 = "print('Hello World')"
+    image1 = manager.get_or_create_image(code1)
+    print(f"Code: {code1} -> Image: {image1}")
 
-        # Test with dependencies (should generate image name)
-        code2 = "import pandas as pd\nimport numpy as np"
-        image2 = manager.get_or_create_image(code2)
-        print(f"Code: {code2} -> Image: {image2}")
+    # Test with dependencies (should generate image name)
+    code2 = "import pandas as pd\nimport numpy as np"
+    image2 = manager.get_or_create_image(code2)
+    print(f"Code: {code2} -> Image: {image2}")
 
-        # Test cache info
-        cache_info = manager.get_cache_info()
-        print(f"Cache info: {cache_info}")
+    # Test cache info
+    cache_info = manager.get_cache_info()
+    print(f"Cache info: {cache_info}")
 
-        # Clean up
-        manager.clear_cache()
+    # Clean up
+    manager.clear_cache()
 
-        if image1 == "biocage:latest" and image2.startswith("biocage-auto:"):
-            print("✓ Smart image manager test passed")
-            return True
-        else:
-            print("✗ Smart image manager test failed")
-            return False
-
-    except Exception as e:
-        print(f"✗ Smart image manager test failed with error: {e}")
-        return False
+    assert image1 == "biocage:latest", f"Expected default image, got: {image1}"
+    assert image2.startswith("biocage-auto:"), f"Expected auto-generated image, got: {image2}"
+    print("✓ Smart image manager test passed")
 
 
 def main():

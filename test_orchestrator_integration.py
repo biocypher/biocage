@@ -16,28 +16,19 @@ def test_basic_code():
     """Test with basic Python code (no dependencies)."""
     print("Testing basic code execution...")
 
-    try:
-        with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
-            result = sandbox.run("print('Hello, World!')")
+    with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+        result = sandbox.run("print('Hello, World!')")
 
-            if result.success and "Hello, World!" in result.stdout:
-                print("✓ Basic code test passed")
-                return True
-            else:
-                print(f"✗ Basic code test failed: {result.stderr}")
-                return False
-    except Exception as e:
-        print(f"✗ Basic code test failed with exception: {e}")
-        return False
+        assert result.success and "Hello, World!" in result.stdout, f"Basic code test failed: {result.stderr}"
+        print("✓ Basic code test passed")
 
 
 def test_pandas_code():
     """Test with pandas dependency."""
     print("\nTesting pandas code execution...")
 
-    try:
-        with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
-            code = """
+    with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+        code = """
 import pandas as pd
 import numpy as np
 
@@ -50,26 +41,20 @@ print("DataFrame created successfully:")
 print(df)
 print(f"Shape: {df.shape}")
 """
-            result = sandbox.run(code)
+        result = sandbox.run(code)
 
-            if result.success and "DataFrame created successfully" in result.stdout:
-                print("✓ Pandas code test passed")
-                return True
-            else:
-                print(f"✗ Pandas code test failed: {result.stderr}")
-                return False
-    except Exception as e:
-        print(f"✗ Pandas code test failed with exception: {e}")
-        return False
+        assert result.success and "DataFrame created successfully" in result.stdout, (
+            f"Pandas code test failed: {result.stderr}"
+        )
+        print("✓ Pandas code test passed")
 
 
 def test_matplotlib_code():
     """Test with matplotlib dependency."""
     print("\nTesting matplotlib code execution...")
 
-    try:
-        with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
-            code = """
+    with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+        code = """
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -90,26 +75,20 @@ plt.savefig('/app/workspace/sine_plot.png')
 print("Plot saved successfully to /app/workspace/sine_plot.png")
 print(f"Plot size: {len(x)} points")
 """
-            result = sandbox.run(code)
+        result = sandbox.run(code)
 
-            if result.success and "Plot saved successfully" in result.stdout:
-                print("✓ Matplotlib code test passed")
-                return True
-            else:
-                print(f"✗ Matplotlib code test failed: {result.stderr}")
-                return False
-    except Exception as e:
-        print(f"✗ Matplotlib code test failed with exception: {e}")
-        return False
+        assert result.success and "Plot saved successfully" in result.stdout, (
+            f"Matplotlib code test failed: {result.stderr}"
+        )
+        print("✓ Matplotlib code test passed")
 
 
 def test_mixed_dependencies():
     """Test with multiple dependencies."""
     print("\nTesting mixed dependencies...")
 
-    try:
-        with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
-            code = """
+    with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+        code = """
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -129,53 +108,37 @@ corr_matrix = df.corr()
 print(f"Correlation matrix shape: {corr_matrix.shape}")
 print("Test completed successfully!")
 """
-            result = sandbox.run(code)
+        result = sandbox.run(code)
 
-            if result.success and "Test completed successfully" in result.stdout:
-                print("✓ Mixed dependencies test passed")
-                return True
-            else:
-                print(f"✗ Mixed dependencies test failed: {result.stderr}")
-                return False
-    except Exception as e:
-        print(f"✗ Mixed dependencies test failed with exception: {e}")
-        return False
+        assert result.success and "Test completed successfully" in result.stdout, (
+            f"Mixed dependencies test failed: {result.stderr}"
+        )
+        print("✓ Mixed dependencies test passed")
 
 
 def test_persistent_mode():
     """Test persistent mode with dependency detection."""
     print("\nTesting persistent mode...")
 
+    sandbox = BioCageOrchestrator(execution_mode="persistent", auto_detect_dependencies=True)
+
+    # Start container
+    sandbox.start_container()
+
     try:
-        sandbox = BioCageOrchestrator(execution_mode="persistent", auto_detect_dependencies=True)
+        # First execution - should trigger image building
+        result1 = sandbox.run("import pandas as pd\ndf = pd.DataFrame({'x': [1, 2, 3]})\nprint('First execution')")
 
-        # Start container
-        sandbox.start_container()
+        assert result1.success, f"First execution failed: {result1.stderr}"
 
-        try:
-            # First execution - should trigger image building
-            result1 = sandbox.run("import pandas as pd\ndf = pd.DataFrame({'x': [1, 2, 3]})\nprint('First execution')")
+        # Second execution - should reuse same container
+        result2 = sandbox.run("print('DataFrame shape:', df.shape)")
 
-            if not result1.success:
-                print(f"✗ First execution failed: {result1.stderr}")
-                return False
+        assert result2.success and "DataFrame shape:" in result2.stdout, f"Second execution failed: {result2.stderr}"
+        print("✓ Persistent mode test passed")
 
-            # Second execution - should reuse same container
-            result2 = sandbox.run("print('DataFrame shape:', df.shape)")
-
-            if result2.success and "DataFrame shape:" in result2.stdout:
-                print("✓ Persistent mode test passed")
-                return True
-            else:
-                print(f"✗ Second execution failed: {result2.stderr}")
-                return False
-
-        finally:
-            sandbox.cleanup()
-
-    except Exception as e:
-        print(f"✗ Persistent mode test failed with exception: {e}")
-        return False
+    finally:
+        sandbox.cleanup()
 
 
 def main():
