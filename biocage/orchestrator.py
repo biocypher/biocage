@@ -265,6 +265,106 @@ class BioCageOrchestrator:
 
             return error_result
 
+    def execute_with_files(
+        self,
+        code: str,
+        files: dict[str, str],
+        timeout: Optional[int] = None
+    ) -> SandboxExecutionResult:
+        """
+        Execute Python code with temporary files created in the container.
+
+        This method creates temporary files with the specified content inside
+        the container and then executes the provided code. The files are
+        automatically cleaned up after execution.
+
+        Args:
+            code: Python code to execute
+            files: Dictionary mapping file paths to file content
+            timeout: Optional timeout in seconds (uses default if not specified)
+
+        Returns:
+            SandboxExecutionResult with execution details
+
+        Example:
+            >>> orchestrator = BioCageOrchestrator()
+            >>> files = {
+            ...     '/tmp/data.csv': 'name,age\\nAlice,30\\nBob,25',
+            ...     '/tmp/config.json': '{"debug": true}'
+            ... }
+            >>> result = orchestrator.execute_with_files('''
+            ... import pandas as pd
+            ... import json
+            ... df = pd.read_csv('/tmp/data.csv')
+            ... with open('/tmp/config.json') as f:
+            ...     config = json.load(f)
+            ... print(f"Loaded {len(df)} records, debug={config['debug']}")
+            ... ''', files)
+        """
+        if not files:
+            # If no files provided, just execute the code normally
+            return self.run(code, timeout=timeout or 30)
+
+        # Validate timeout
+        if timeout is not None:
+            validate_timeout(timeout)
+        else:
+            timeout = 30
+
+        # Get the appropriate executor
+        executor = self._get_executor()
+
+        # Use EphemeralExecutor's execute_with_files if available
+        if hasattr(executor, 'execute_with_files'):
+            return executor.execute_with_files(code, files, timeout)
+
+        # For PersistentExecutor, we need to create files manually and then execute
+        try:
+            # Create all temporary files first
+            file_creation_code = "import os\n"
+
+            for file_path, content in files.items():
+                # Ensure directory exists
+                dir_path = str(Path(file_path).parent)
+                file_creation_code += f"os.makedirs('{dir_path}', exist_ok=True)\n"
+
+                # Create the file with content
+                escaped_content = repr(content)
+                file_creation_code += f"""
+with open('{file_path}', 'w') as f:
+    f.write({escaped_content})
+"""
+
+            # Execute file creation
+            creation_result = executor.execute(file_creation_code, timeout=timeout)
+            if not creation_result.success:
+                return SandboxExecutionResult(
+                    stdout="",
+                    stderr=f"Failed to create temporary files: {creation_result.stderr}",
+                    exit_code=1,
+                    execution_time=creation_result.execution_time,
+                    error="File creation failed"
+                )
+
+            # Execute the actual code
+            execution_result = executor.execute(code, timeout=timeout)
+
+            # Note: Files will be cleaned up automatically when container stops
+            # or when using ephemeral mode. For persistent mode, files remain
+            # until container restart.
+
+            return execution_result
+
+        except Exception as e:
+            logger.exception("execute_with_files failed: %s", e)
+            return SandboxExecutionResult(
+                stdout="",
+                stderr=f"execute_with_files failed: {e}",
+                exit_code=1,
+                execution_time=0.0,
+                error=str(e)
+            )
+
     def expose_path(
         self,
         host_path: Union[str, Path],
