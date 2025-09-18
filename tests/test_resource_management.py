@@ -361,10 +361,10 @@ class TestResourcePerformance:
                 cpu_limit="2.0"
             ) as sandbox:
 
-                result = sandbox.run("""
+                result = sandbox.run(f"""
 import time
 
-print(f"Testing with {config['description']}...")
+print("Testing with {config['description']}...")
 
 start_time = time.time()
 
@@ -385,7 +385,7 @@ computation_time = time.time() - start_time
 print(f"Allocation time: {{allocation_time:.4f}}s")
 print(f"Computation time: {{computation_time:.4f}}s")
 print(f"Total data points: {{total}}")
-print(f"Test completed with {config['description']}")
+print("Test completed with {config['description']}")
 """)
 
                 assert result.success

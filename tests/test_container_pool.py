@@ -405,7 +405,7 @@ class TestPoolPerformance:
 
             # Execute tasks that will utilize the pool
             tasks = [
-                "import time; time.sleep(0.5); print(f'Task {i} complete')"
+                f"import time; time.sleep(0.5); print('Task {i} complete')"
                 for i in range(6)  # More tasks than pool size
             ]
 
