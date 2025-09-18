@@ -66,7 +66,7 @@ for i, value in enumerate(data):
     print(f"Result: {result}")
 
 print("This should not execute due to error")
-""")
+""", shutdown_on_failure=False)
             assert not result2.success
             assert "Processing item 0: 1" in result2.stdout
             assert "Processing item 1: 2" in result2.stdout
@@ -101,7 +101,7 @@ print("Standard imports successful")
 # This should fail
 import nonexistent_module_xyz
 print("This line should not execute")
-""")
+""", shutdown_on_failure=False)
             assert not result1.success
             assert "Standard imports successful" in result1.stdout
             assert "ModuleNotFoundError" in result1.stderr
@@ -150,7 +150,7 @@ except MemoryError as e:
     print(f"Memory allocation failed as expected: {e}")
 except Exception as e:
     print(f"Other error during allocation: {type(e).__name__}: {e}")
-""", timeout=30)
+""", timeout=30, shutdown_on_failure=False)
 
             # This might succeed or fail depending on system resources
             # The important part is that the container recovers
@@ -190,7 +190,7 @@ time.sleep(10)  # This will cause timeout
 
 counter = 2  # This should not execute
 print("This should not appear due to timeout")
-""", timeout=3)
+""", timeout=3, shutdown_on_failure=False)
 
             assert not result2.success
             assert result2.exit_code == 124  # Timeout exit code
@@ -225,15 +225,15 @@ print("Error resilience test initialized")
 """)
             assert result0.success
 
-            # Error 1: Syntax error
+            # Error 1: Runtime error (use runtime instead of syntax for partial output)
             result1 = sandbox.run("""
-print("Operation 1: Testing syntax error resilience")
+print("Operation 1: Testing runtime error resilience")
 successful_operations += 1
-print('Syntax error coming up  # Missing quote
+x = 1 / 0  # Runtime error that allows partial output
 print("Should not reach here")
-""")
+""", shutdown_on_failure=False)
             assert not result1.success
-            assert "SyntaxError" in result1.stderr
+            assert "ZeroDivisionError" in result1.stderr
 
             # Recovery check 1
             recovery1 = sandbox.run("""
@@ -242,15 +242,15 @@ print(f"After error 1 - successful: {successful_operations}, errors: {error_coun
 """)
             assert recovery1.success
 
-            # Error 2: Runtime error
+            # Error 2: Name error
             result2 = sandbox.run("""
-print("Operation 2: Testing runtime error resilience")
+print("Operation 2: Testing name error resilience")
 successful_operations += 1
-x = 10 / 0  # Division by zero
+print(undefined_variable_name)  # Name error
 print("Should not reach here")
-""")
+""", shutdown_on_failure=False)
             assert not result2.success
-            assert "ZeroDivisionError" in result2.stderr
+            assert "NameError" in result2.stderr
 
             # Recovery check 2
             recovery2 = sandbox.run("""
@@ -259,15 +259,15 @@ print(f"After error 2 - successful: {successful_operations}, errors: {error_coun
 """)
             assert recovery2.success
 
-            # Error 3: Name error
+            # Error 3: Import error
             result3 = sandbox.run("""
-print("Operation 3: Testing name error resilience")
+print("Operation 3: Testing import error resilience")
 successful_operations += 1
-print(undefined_variable)  # Name error
+import nonexistent_module_abc  # Import error
 print("Should not reach here")
-""")
+""", shutdown_on_failure=False)
             assert not result3.success
-            assert "NameError" in result3.stderr
+            assert "ModuleNotFoundError" in result3.stderr
 
             # Final recovery check
             recovery3 = sandbox.run("""
@@ -336,7 +336,7 @@ with open('/app/definitely_missing.txt', 'r') as f:
     bad_content = f.read()
 
 print("Should not reach this line")
-""")
+""", shutdown_on_failure=False)
                 assert not result2.success
                 assert "FileNotFoundError" in result2.stderr
 
@@ -461,7 +461,7 @@ persistent_data['counter'] += 1
 persistent_data['operations'].append('before_error')
 print("About to cause error...")
 undefined_variable_error
-""")
+""", shutdown_on_failure=False)
             assert not result2.success
             assert "NameError" in result2.stderr
 
