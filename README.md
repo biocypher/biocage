@@ -51,6 +51,13 @@ BioCage addresses critical needs in the AI era:
 - Efficient resource usage with proper limits
 - Minimal overhead for code execution
 
+### 🧠 Smart Dependency Management
+- **Automatic dependency detection** from Python code
+- **Dynamic Docker image generation** with UV package manager
+- **Intelligent image caching** for performance optimization
+- **Auto-cleanup** of dynamic images (enabled by default) to save disk space
+- **Manual cleanup control** for advanced use cases
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -199,6 +206,44 @@ def safe_execute(code, description=""):
 print(safe_execute("print('Hello World!')", "Basic execution"))
 print(safe_execute("print(undefined_var)", "Variable error"))
 print(safe_execute("import nonexistent_module", "Import error"))
+```
+
+### Smart Dependencies and Auto-Cleanup
+
+```python
+# Automatic dependency detection with auto-cleanup (default)
+with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+    # BioCage automatically detects pandas and numpy
+    result = sandbox.run("""
+import pandas as pd
+import numpy as np
+
+df = pd.DataFrame({'x': np.random.rand(5)})
+print(f"Created DataFrame with shape: {df.shape}")
+""")
+    print(result.stdout)
+    # Dynamic image automatically removed when context exits
+
+# Disable auto-cleanup to cache images for reuse
+with BioCageOrchestrator(
+    auto_detect_dependencies=True,
+    auto_cleanup_dynamic_images=False
+) as sandbox:
+    # First execution builds image with matplotlib
+    result1 = sandbox.run("""
+import matplotlib.pyplot as plt
+print("Matplotlib imported successfully")
+""")
+    
+    # Subsequent executions reuse the same image
+    result2 = sandbox.run("""
+# Matplotlib is still available
+plt.figure()
+plt.plot([1, 2, 3, 4])
+print("Plot created successfully")
+""")
+    
+    # Images preserved for future sessions
 ```
 
 ### Container Restart with State Recovery
