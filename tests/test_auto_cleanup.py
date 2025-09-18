@@ -237,19 +237,12 @@ class TestAutoCleanup:
         """Test dynamic images information reporting."""
         self.orchestrator._dynamic_images_created = {"biocage-auto:info1", "biocage-auto:info2"}
         
-        # Mock image existence and sizes
+        # Mock image existence and sizes directly on SmartImageManager
         self.mock_smart_image_manager._image_exists.side_effect = [True, False]
         self.mock_smart_image_manager._get_image_size.side_effect = [25 * 1024 * 1024, 0]
         
-        # Mock the fallback DockerClient and its methods
-        with patch('biocage.container.docker_client.DockerClient') as mock_docker_class:
-            mock_fallback_client = Mock()
-            mock_docker_class.return_value = mock_fallback_client
-            
-            # Mock the orchestrator's private methods for fallback case
-            with patch.object(self.orchestrator, '_image_exists', side_effect=[True, False]):
-                with patch.object(self.orchestrator, '_get_image_size', side_effect=[25 * 1024 * 1024, 0]):
-                    info = self.orchestrator.get_dynamic_images_info()
+        # Call the method - it should use the SmartImageManager directly
+        info = self.orchestrator.get_dynamic_images_info()
         
         # Verify info structure
         assert info["count"] == 2
@@ -259,15 +252,19 @@ class TestAutoCleanup:
         images = info["images"]
         assert len(images) == 2
         
-        # First image should exist and have size
-        img1 = next(img for img in images if img["name"] == "biocage-auto:info1")
-        assert img1["exists"] is True
-        assert img1["size_bytes"] == 25 * 1024 * 1024
+        # Find the image that exists and the one that doesn't
+        existing_img = next(img for img in images if img["exists"] is True)
+        non_existing_img = next(img for img in images if img["exists"] is False)
         
-        # Second image should not exist
-        img2 = next(img for img in images if img["name"] == "biocage-auto:info2")
-        assert img2["exists"] is False
-        assert img2["size_bytes"] == 0
+        # Verify the existing image has the expected size
+        assert existing_img["size_bytes"] == 25 * 1024 * 1024
+        
+        # Verify the non-existing image has zero size
+        assert non_existing_img["size_bytes"] == 0
+        
+        # Verify we have one of each
+        assert sum(1 for img in images if img["exists"] is True) == 1
+        assert sum(1 for img in images if img["exists"] is False) == 1
 
     def test_cleanup_policy_configuration(self):
         """Test cleanup policy configuration methods."""
