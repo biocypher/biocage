@@ -9,9 +9,18 @@ copyright: Maintained by <a href="https://fcarli.com">fcarli</a>.
 
 nav:
   - Home: index.md
-  - BioCageManager Features: biocagemanager-features.md
-  - Docker Setup: docker-setup.md
-  - API Reference: modules.md
+  - Getting Started: getting-started.md
+  - User Guide: user-guide.md
+  - API Reference:
+    - Overview: api-reference.md
+    - Auto-generated: modules.md
+  - Examples: examples.md
+  - Advanced Guide: advanced-guide.md
+  - Security: security.md
+  - Troubleshooting: troubleshooting.md
+  - Legacy:
+    - BioCageManager Features: biocagemanager-features.md
+    - Docker Setup: docker-setup.md
 plugins:
   - search
   - mkdocstrings:
