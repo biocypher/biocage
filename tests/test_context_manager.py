@@ -1,6 +1,6 @@
 """Test context manager functionality."""
 
-from biocage import BioCageManager
+from biocage import BioCageOrchestrator as BioCageManager
 
 
 class TestBasicContextManager:

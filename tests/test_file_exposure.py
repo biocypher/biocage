@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from biocage import BioCageManager
+from biocage import BioCageOrchestrator as BioCageManager
 
 
 @pytest.fixture
@@ -149,7 +149,7 @@ class TestDirectoryExposure:
         subdir = test_data_dir["subdir"]
 
         sandbox = BioCageManager()
-        container_path = sandbox.expose_directory(subdir, "/app/models", read_only=True)
+        container_path = sandbox.expose_directory(subdir, "/app/models", readonly=True)
 
         with sandbox:
             result = sandbox.run(f"""
@@ -226,7 +226,7 @@ class TestWritableDirectories:
     def test_writable_directory_basic(self, output_dir):
         """Test basic writable directory functionality."""
         sandbox = BioCageManager()
-        container_path = sandbox.expose_directory(output_dir, "/app/output", read_only=False)
+        container_path = sandbox.expose_directory(output_dir, "/app/output", readonly=False)
 
         with sandbox:
             result = sandbox.run(f"""

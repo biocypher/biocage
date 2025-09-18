@@ -18,9 +18,34 @@ __author__ = "Francesco Carli"
 __email__ = "francesco.carli94@gmail.com"
 
 try:
-    from .biocage_manager import BioCageManager, SandboxExecutionResult
+    # Import utility classes
+    from .container import ContainerLifecycle, DockerClient, ImageManager
 
-    __all__ = ["BioCageManager", "SandboxExecutionResult"]
+    # Import main execution classes for direct access
+    from .execution import EphemeralExecutor, PersistentExecutor
+    from .filesystem import PathManager, TempFileManager
+    from .models import SandboxExecutionResult
+    from .orchestrator import BioCageManager, BioCageOrchestrator
+    from .persistence import SessionScriptGenerator
+
+    __all__ = [
+        # Main interfaces
+        "BioCageOrchestrator",
+        "BioCageManager",  # Backward compatibility alias
+        "SandboxExecutionResult",
+
+        # Execution strategies
+        "PersistentExecutor",
+        "EphemeralExecutor",
+
+        # Core components
+        "DockerClient",
+        "ImageManager",
+        "ContainerLifecycle",
+        "PathManager",
+        "TempFileManager",
+        "SessionScriptGenerator",
+    ]
 except ImportError:
     # Handle import errors gracefully for documentation generation
     __all__ = []

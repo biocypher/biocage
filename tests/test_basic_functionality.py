@@ -1,6 +1,6 @@
 """Test basic sandbox functionality."""
 
-from biocage import BioCageManager
+from biocage import BioCageOrchestrator as BioCageManager
 
 
 class TestBasicExecution:

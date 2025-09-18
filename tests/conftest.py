@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from biocage import BioCageManager
+from biocage import BioCageOrchestrator as BioCageManager
 
 
 @pytest.fixture(scope="session")
