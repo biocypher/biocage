@@ -27,6 +27,7 @@ from .constants import DEFAULT_CPU_LIMIT, DEFAULT_IMAGE_NAME, DEFAULT_MEMORY_LIM
 from .execution import EphemeralExecutor, PersistentExecutor
 from .models import SandboxExecutionResult
 from .validation import validate_timeout
+from .intelligence import SmartImageManager
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class BioCageOrchestrator:
         cpu_limit: str = DEFAULT_CPU_LIMIT,
         network_access: bool = False,
         execution_mode: str = "auto",
+        auto_detect_dependencies: bool = False,
     ) -> None:
         """
         Initialize the BioCage orchestrator.
@@ -89,13 +91,15 @@ class BioCageOrchestrator:
             cpu_limit: CPU limit for containers (e.g., "1.0", "2.0")
             network_access: Whether to allow network access in containers
             execution_mode: Execution mode ('auto', 'persistent', 'ephemeral')
+            auto_detect_dependencies: Whether to automatically detect dependencies and build images
 
         Example:
             >>> orchestrator = BioCageOrchestrator(
             ...     image_name="python:3.11",
             ...     memory_limit="1g",
             ...     cpu_limit="2.0",
-            ...     execution_mode="persistent"
+            ...     execution_mode="persistent",
+            ...     auto_detect_dependencies=True
             ... )
         """
         self.image_name = image_name
@@ -103,22 +107,28 @@ class BioCageOrchestrator:
         self.cpu_limit = cpu_limit
         self.network_access = network_access
         self.execution_mode = execution_mode
+        self.auto_detect_dependencies = auto_detect_dependencies
 
         # Execution state
         self.current_executor: Optional[Union[PersistentExecutor, EphemeralExecutor]] = None
         self.is_running = False
         self._context_manager_active = False
 
+        # Smart image manager for automatic dependency detection
+        self.smart_image_manager: Optional[SmartImageManager] = None
+        if auto_detect_dependencies:
+            self.smart_image_manager = SmartImageManager()
+
         logger.info(
             "Initialized BioCageOrchestrator: image=%s, mode=%s, memory=%s, cpu=%s",
-            image_name, execution_mode, memory_limit, cpu_limit
+            image_name,
+            execution_mode,
+            memory_limit,
+            cpu_limit,
         )
 
     def start_container(
-        self,
-        memory_limit: Optional[str] = None,
-        cpu_limit: Optional[str] = None,
-        network_access: Optional[bool] = None
+        self, memory_limit: Optional[str] = None, cpu_limit: Optional[str] = None, network_access: Optional[bool] = None
     ) -> str:
         """
         Start a persistent container for stateful execution.
@@ -154,10 +164,7 @@ class BioCageOrchestrator:
 
         # Create persistent executor
         self.current_executor = PersistentExecutor(
-            image_name=self.image_name,
-            memory_limit=memory,
-            cpu_limit=cpu,
-            network_access=network
+            image_name=self.image_name, memory_limit=memory, cpu_limit=cpu, network_access=network
         )
 
         # Initialize and get container ID
@@ -197,11 +204,7 @@ class BioCageOrchestrator:
             self.is_running = False
 
     def run(
-        self,
-        code: str,
-        timeout: int = 30,
-        stdin_input: Optional[str] = None,
-        shutdown_on_failure: bool = True
+        self, code: str, timeout: int = 30, stdin_input: Optional[str] = None, shutdown_on_failure: bool = True
     ) -> SandboxExecutionResult:
         """
         Execute Python code in the sandbox.
@@ -238,6 +241,28 @@ class BioCageOrchestrator:
             )
 
         try:
+            # Handle automatic dependency detection
+            if self.smart_image_manager:
+                image_name = self.smart_image_manager.get_or_create_image(code)
+                if image_name != self.image_name:
+                    logger.info("Using dynamically generated image: %s", image_name)
+                    # Update image name for this execution
+                    old_image_name = self.image_name
+                    self.image_name = image_name
+
+                    # If we have a running executor, restart it with new image
+                    if self.is_running and self.current_executor:
+                        logger.info("Restarting container with new image: %s", image_name)
+                        self.restart_container(image_name=image_name)
+                    else:
+                        # For ephemeral mode, we need to create a new executor with the new image
+                        if self.current_executor:
+                            self.current_executor.cleanup()
+                        self.current_executor = None
+
+                    # Restore original image name for future executions
+                    self.image_name = old_image_name
+
             # Determine execution strategy
             executor = self._get_executor()
 
@@ -253,11 +278,7 @@ class BioCageOrchestrator:
 
         except Exception as e:
             logger.exception("Code execution failed: %s", e)
-            error_result = SandboxExecutionResult(
-                error=f"Execution failed: {e}",
-                exit_code=1,
-                execution_time=0.0
-            )
+            error_result = SandboxExecutionResult(error=f"Execution failed: {e}", exit_code=1, execution_time=0.0)
 
             # Shutdown on critical failure
             if shutdown_on_failure and self.is_running:
@@ -266,10 +287,7 @@ class BioCageOrchestrator:
             return error_result
 
     def execute_with_files(
-        self,
-        code: str,
-        files: dict[str, str],
-        timeout: Optional[int] = None
+        self, code: str, files: dict[str, str], timeout: Optional[int] = None
     ) -> SandboxExecutionResult:
         """
         Execute Python code with temporary files created in the container.
@@ -315,7 +333,7 @@ class BioCageOrchestrator:
         executor = self._get_executor()
 
         # Use EphemeralExecutor's execute_with_files if available
-        if hasattr(executor, 'execute_with_files'):
+        if hasattr(executor, "execute_with_files"):
             return executor.execute_with_files(code, files, timeout)
 
         # For PersistentExecutor, we need to create files manually and then execute
@@ -343,7 +361,7 @@ with open('{file_path}', 'w') as f:
                     stderr=f"Failed to create temporary files: {creation_result.stderr}",
                     exit_code=1,
                     execution_time=creation_result.execution_time,
-                    error="File creation failed"
+                    error="File creation failed",
                 )
 
             # Execute the actual code
@@ -358,18 +376,11 @@ with open('{file_path}', 'w') as f:
         except Exception as e:
             logger.exception("execute_with_files failed: %s", e)
             return SandboxExecutionResult(
-                stdout="",
-                stderr=f"execute_with_files failed: {e}",
-                exit_code=1,
-                execution_time=0.0,
-                error=str(e)
+                stdout="", stderr=f"execute_with_files failed: {e}", exit_code=1, execution_time=0.0, error=str(e)
             )
 
     def expose_path(
-        self,
-        host_path: Union[str, Path],
-        container_path: Optional[str] = None,
-        readonly: bool = True
+        self, host_path: Union[str, Path], container_path: Optional[str] = None, readonly: bool = True
     ) -> str:
         """
         Expose a host path to containers.
@@ -407,11 +418,7 @@ with open('{file_path}', 'w') as f:
         else:
             return executor.expose_path(str(host_path), container_path, readonly)
 
-    def expose_file(
-        self,
-        host_file_path: Union[str, Path],
-        container_file_path: Optional[str] = None
-    ) -> str:
+    def expose_file(self, host_file_path: Union[str, Path], container_file_path: Optional[str] = None) -> str:
         """
         Expose a single file to containers.
 
@@ -430,10 +437,7 @@ with open('{file_path}', 'w') as f:
         return self.expose_path(host_file_path, container_file_path, readonly=True)
 
     def expose_directory(
-        self,
-        host_dir_path: Union[str, Path],
-        container_dir_path: Optional[str] = None,
-        readonly: bool = True
+        self, host_dir_path: Union[str, Path], container_dir_path: Optional[str] = None, readonly: bool = True
     ) -> str:
         """
         Expose a directory to containers.
@@ -473,15 +477,14 @@ with open('{file_path}', 'w') as f:
             raise RuntimeError("No persistent container to restart")
 
         # Update configuration with provided kwargs
-        memory = kwargs.get('memory_limit', self.memory_limit)
-        cpu = kwargs.get('cpu_limit', self.cpu_limit)
-        network = kwargs.get('network_access', self.network_access)
+        memory = kwargs.get("memory_limit", self.memory_limit)
+        cpu = kwargs.get("cpu_limit", self.cpu_limit)
+        network = kwargs.get("network_access", self.network_access)
+        image_name = kwargs.get("image_name", self.image_name)
 
         # Restart the persistent executor
         container_id = self.current_executor.restart_container(
-            memory_limit=memory,
-            cpu_limit=cpu,
-            network_access=network
+            memory_limit=memory, cpu_limit=cpu, network_access=network, image_name=image_name
         )
 
         logger.info("Restarted persistent container: %s", container_id[:12])
@@ -575,7 +578,7 @@ print(f"Created temp file: {container_path}")
             raise RuntimeError(f"Failed to create temp file: {result.stderr}")
 
         # Track the file in the executor's temp file manager for cleanup
-        if hasattr(self.current_executor, 'temp_file_manager'):
+        if hasattr(self.current_executor, "temp_file_manager"):
             # Add to the files list for tracking (as container path)
             self.current_executor.temp_file_manager.temp_files.append(container_path)
 
@@ -599,6 +602,9 @@ print(f"Created temp file: {container_path}")
         try:
             if self.current_executor:
                 self.current_executor.cleanup()
+
+            # Note: SmartImageManager cleanup is handled in __del__ method
+            # We don't clear cache here to allow image reuse across multiple runs
 
             # Reset state
             self.current_executor = None
@@ -651,21 +657,21 @@ print(f"Created temp file: {container_path}")
         self._context_manager_active = True
 
         # Apply path exposures if configured
-        if hasattr(self, '_expose_files'):
+        if hasattr(self, "_expose_files"):
             for host_path, container_path in self._expose_files.items():
                 self.expose_file(host_path, container_path)
 
-        if hasattr(self, '_expose_directories'):
+        if hasattr(self, "_expose_directories"):
             for host_path, container_path in self._expose_directories.items():
                 self.expose_directory(host_path, container_path, readonly=True)
 
-        if hasattr(self, '_expose_directories_rw'):
+        if hasattr(self, "_expose_directories_rw"):
             for host_path, container_path in self._expose_directories_rw.items():
                 self.expose_directory(host_path, container_path, readonly=False)
 
         # If execution mode is persistent or auto, start a persistent container
         if self.execution_mode in ("persistent", "auto") and not self.is_running:
-            kwargs = getattr(self, '_context_kwargs', {})
+            kwargs = getattr(self, "_context_kwargs", {})
             try:
                 self.start_container(**kwargs)
             except Exception as e:
@@ -702,7 +708,7 @@ print(f"Created temp file: {container_path}")
                     image_name=self.image_name,
                     memory_limit=self.memory_limit,
                     cpu_limit=self.cpu_limit,
-                    network_access=self.network_access
+                    network_access=self.network_access,
                 )
                 if not self.current_executor.is_initialized:
                     self.current_executor.initialize()
@@ -717,7 +723,7 @@ print(f"Created temp file: {container_path}")
                     image_name=self.image_name,
                     memory_limit=self.memory_limit,
                     cpu_limit=self.cpu_limit,
-                    network_access=self.network_access
+                    network_access=self.network_access,
                 )
                 if not self.current_executor.is_initialized:
                     self.current_executor.initialize()
@@ -733,15 +739,17 @@ print(f"Created temp file: {container_path}")
         """
         # Check if we have any existing executor with path exposures
         if self.current_executor:
-            if hasattr(self.current_executor, 'path_manager'):
+            if hasattr(self.current_executor, "path_manager"):
                 exposed_paths = self.current_executor.path_manager.get_exposed_paths_info()
                 if exposed_paths:
                     return True
 
         # Check if we have pending exposures from context manager configuration
-        if (hasattr(self, '_expose_files') or
-            hasattr(self, '_expose_directories') or
-            hasattr(self, '_expose_directories_rw')):
+        if (
+            hasattr(self, "_expose_files")
+            or hasattr(self, "_expose_directories")
+            or hasattr(self, "_expose_directories_rw")
+        ):
             return True
 
         return False
@@ -760,9 +768,7 @@ print(f"Created temp file: {container_path}")
         else:  # auto mode
             # In auto mode, use persistent if we're in a context manager, already running,
             # or if we have path exposures (which require persistent containers)
-            if (self._context_manager_active or
-                self.is_running or
-                self._has_path_exposures()):
+            if self._context_manager_active or self.is_running or self._has_path_exposures():
                 return "persistent"
             else:
                 return "ephemeral"

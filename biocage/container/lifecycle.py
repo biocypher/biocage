@@ -100,11 +100,7 @@ class ContainerLifecycle:
         >>> print("Container stopped and cleaned up")
     """
 
-    def __init__(
-        self,
-        image_name: str,
-        container_name_prefix: str = DEFAULT_CONTAINER_PREFIX
-    ) -> None:
+    def __init__(self, image_name: str, container_name_prefix: str = DEFAULT_CONTAINER_PREFIX) -> None:
         """
         Initialize the container lifecycle manager.
 
@@ -135,6 +131,7 @@ class ContainerLifecycle:
         environment: Optional[dict[str, str]] = None,
         read_only: bool = True,
         tmpfs_mounts: Optional[list[str]] = None,
+        image_name: Optional[str] = None,
     ) -> str:
         """
         Start a new container with specified configuration.
@@ -177,14 +174,14 @@ class ContainerLifecycle:
         validate_memory_limit(memory_limit)
         validate_cpu_limit(cpu_limit)
 
+        # Use provided image_name or fall back to instance default
+        target_image = image_name or self.image_name
+
         # Generate unique container name
         self.container_name = f"{self.container_name_prefix}-{uuid.uuid4().hex[:8]}"
 
         # Default tmpfs mounts for security
-        default_tmpfs = [
-            "/app/workspace:size=100m,uid=999,gid=999",
-            "/tmp:noexec,nosuid,nodev,size=50m"
-        ]
+        default_tmpfs = ["/app/workspace:size=100m,uid=999,gid=999", "/tmp:noexec,nosuid,nodev,size=50m"]
 
         if tmpfs_mounts:
             default_tmpfs.extend(tmpfs_mounts)
@@ -195,7 +192,7 @@ class ContainerLifecycle:
         try:
             # Build the docker run command
             docker_cmd = self.docker_client.build_run_command(
-                image=self.image_name,
+                image=target_image,
                 command=["sleep", "infinity"],  # Keep container running
                 detached=True,
                 name=self.container_name,
@@ -225,11 +222,7 @@ class ContainerLifecycle:
         except DockerCommandError as e:
             error_msg = f"Failed to start container: {e.stderr}"
             logger.exception("Container start failed: %s", error_msg)
-            raise ContainerLifecycleError(
-                self.container_name or "unknown",
-                "start",
-                error_msg
-            ) from e
+            raise ContainerLifecycleError(self.container_name or "unknown", "start", error_msg) from e
 
     def stop_container(self, timeout: int = 10) -> None:
         """
@@ -258,15 +251,12 @@ class ContainerLifecycle:
 
         try:
             # Stop the container gracefully
-            stop_success = self.docker_client.stop_container(
-                self.container_name,
-                timeout=timeout
-            )
+            stop_success = self.docker_client.stop_container(self.container_name, timeout=timeout)
 
             # Remove the container
             remove_success = self.docker_client.remove_container(
                 self.container_name,
-                force=not stop_success  # Force if stop failed
+                force=not stop_success,  # Force if stop failed
             )
 
             if stop_success or remove_success:
@@ -397,10 +387,7 @@ class ContainerLifecycle:
         return base_info
 
     def execute_command(
-        self,
-        command: list[str],
-        input_data: Optional[str] = None,
-        timeout: Optional[int] = None
+        self, command: list[str], input_data: Optional[str] = None, timeout: Optional[int] = None
     ) -> subprocess.CompletedProcess[str]:
         """
         Execute a command inside the running container.
@@ -424,23 +411,11 @@ class ContainerLifecycle:
             >>> print(f"Python version: {result.stdout}")
         """
         if not self.is_running or not self.container_name:
-            raise ContainerLifecycleError(
-                self.container_name or "unknown",
-                "execute",
-                "Container is not running"
-            )
+            raise ContainerLifecycleError(self.container_name or "unknown", "execute", "Container is not running")
 
         exec_cmd = ["docker", "exec", "-i", self.container_name, *command]
 
         try:
-            return self.docker_client.run_command(
-                exec_cmd,
-                input_data=input_data,
-                timeout=timeout
-            )
+            return self.docker_client.run_command(exec_cmd, input_data=input_data, timeout=timeout)
         except DockerCommandError as e:
-            raise ContainerLifecycleError(
-                self.container_name,
-                "execute",
-                f"Command execution failed: {e}"
-            ) from e
+            raise ContainerLifecycleError(self.container_name, "execute", f"Command execution failed: {e}") from e
