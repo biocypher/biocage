@@ -15,7 +15,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 from .biocage_manager import BioCageManager
 
@@ -92,7 +91,7 @@ def cmd_run(args, sandbox: BioCageManager) -> int:
 
         return 0
     except Exception as e:
-        logger.error(f"Execution failed: {e}")
+        logger.exception(f"Execution failed: {e}")
         return 1
 
 
@@ -111,7 +110,7 @@ def cmd_start(args, sandbox: BioCageManager) -> int:
         print(f"Container started: {container_id[:12]}")
         return 0
     except Exception as e:
-        logger.error(f"Failed to start container: {e}")
+        logger.exception(f"Failed to start container: {e}")
         return 1
 
 
@@ -126,7 +125,7 @@ def cmd_stop(args, sandbox: BioCageManager) -> int:
         print("Container stopped")
         return 0
     except Exception as e:
-        logger.error(f"Failed to stop container: {e}")
+        logger.exception(f"Failed to stop container: {e}")
         return 1
 
 
@@ -148,7 +147,7 @@ def cmd_expose(args, sandbox: BioCageManager) -> int:
         print(f"Exposed {host_path} -> {container_path} ({access_type})")
         return 0
     except Exception as e:
-        logger.error(f"Failed to expose path: {e}")
+        logger.exception(f"Failed to expose path: {e}")
         return 1
 
 

@@ -34,7 +34,7 @@ def validate_memory_limit(memory_limit: str) -> None:
         ValueError: If memory limit format is invalid
     """
     if not re.match(r'^\d+[kmg]?$', memory_limit.lower()):
-        raise ValueError("Memory limit must be in format like '512m', '1g', or '1024'")
+        raise ValueError(f"Invalid memory limit '{memory_limit}': must be in format like '512m', '1g', or '1024'")
 
 
 def validate_cpu_limit(cpu_limit: str) -> None:
@@ -54,7 +54,7 @@ def validate_cpu_limit(cpu_limit: str) -> None:
             raise ValueError("CPU limit cannot exceed 32")
     except ValueError as e:
         if "could not convert" in str(e):
-            raise ValueError("CPU limit must be a valid number") from e
+            raise ValueError(f"Invalid CPU limit '{cpu_limit}': must be a valid number") from e
         raise
 
 
@@ -76,6 +76,22 @@ def validate_path_exists(path: Union[str, Path]) -> Path:
     return path_obj
 
 
+def validate_path(path: str) -> None:
+    """
+    Validate a general file system path.
+
+    Args:
+        path: Path to validate
+
+    Raises:
+        ValueError: If path is invalid
+    """
+    if not path or not path.strip():
+        raise ValueError("Path cannot be empty")
+    if len(path) > 4096:  # Maximum path length
+        raise ValueError("Path is too long")
+
+
 def validate_container_path(container_path: str) -> None:
     """Validate container path format.
 
@@ -91,6 +107,22 @@ def validate_container_path(container_path: str) -> None:
         raise ValueError("Container path cannot contain '..' for security")
     if not container_path.strip():
         raise ValueError("Container path cannot be empty")
+
+
+def validate_code_string(code: str) -> None:
+    """
+    Validate Python code string for execution.
+
+    Args:
+        code: Python code to validate
+
+    Raises:
+        ValueError: If code is invalid
+    """
+    if not code.strip():
+        raise ValueError("Code cannot be empty")
+    if len(code) > 1_000_000:  # 1MB limit
+        raise ValueError("Code size cannot exceed 1MB")
 
 
 def validate_code_input(code: str) -> None:

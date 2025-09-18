@@ -1,6 +1,6 @@
 """Test error reporting and handling functionality."""
 
-from biocage import BioCageManager
+from biocage import BioCageOrchestrator as BioCageManager
 
 
 class TestBasicErrorReporting:

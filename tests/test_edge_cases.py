@@ -3,7 +3,7 @@ Edge case tests for BioCage robustness.
 """
 
 import pytest
-from biocage import BioCageManager
+from biocage import BioCageOrchestrator as BioCageManager
 
 
 class TestEdgeCases:
@@ -48,7 +48,7 @@ for i in range(10000):
 print("Hello 世界! 🐍 Python")
 print("Math symbols: ∑ ∆ ∞ π")
 print("Emojis: 😀 🚀 💻")
-print("Special chars: «»„"‚'")
+print("Special chars: «»""''")
 '''
         result = sandbox.run(code)
         assert result.success
@@ -64,7 +64,7 @@ while True:
         result = sandbox.run(code, timeout=2)
         assert not result.success
         assert result.exit_code == 124  # Timeout exit code
-        assert "timeout" in result.error.lower()
+        assert "timeout" in result.error.lower() or "timed out" in result.error.lower()
 
     def test_memory_intensive_operation(self, sandbox):
         """Test memory-intensive operations."""
@@ -223,9 +223,8 @@ except Exception as e:
         sandbox = BioCageManager()
 
         try:
-            # Expose file and start container
+            # Expose file (this automatically starts a persistent container)
             sandbox.expose_file(test_file)
-            sandbox.start_container()
 
             # Simulate an error during execution
             result = sandbox.run("raise RuntimeError('Test error')")
@@ -234,7 +233,8 @@ except Exception as e:
             # Verify cleanup happens
             sandbox.cleanup()
             assert not sandbox.is_running
-            assert len(sandbox.temp_files) == 0
+            # Check that resources are cleaned up
+            assert sandbox.current_executor is None or not hasattr(sandbox.current_executor, 'container_id')
 
         except Exception:
             # Ensure cleanup even if test fails

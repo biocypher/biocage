@@ -21,6 +21,7 @@ DOCKER_SECURITY_OPTS = [
 NETWORK_DISABLED = "--network=none"
 
 # Container paths
+DEFAULT_CONTAINER_WORKSPACE = "/app/workspace"
 WORKSPACE_PATH = "/app/workspace"
 SHARED_PATH = "/app/shared"
 STATE_FILE_PATH = "/app/workspace/session_state.pkl"
