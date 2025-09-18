@@ -347,12 +347,12 @@ for filename in ['/tmp/unicode_text.txt', '/tmp/emoji_data.txt', '/tmp/math_symb
         """Test execute_with_files with larger file content."""
         with BioCageOrchestrator() as sandbox:
             # Create large CSV content
-            large_csv = "id,name,value,description\\n"
+            large_csv = "id,name,value,description\n"
             for i in range(1000):
-                large_csv += f"{i},User{i},{i*10},Description for user {i}\\n"
+                large_csv += f"{i},User{i},{i*10},Description for user {i}\n"
 
             # Create large text content
-            large_text = "\\n".join([f"Line {i}: " + "x" * 100 for i in range(500)])
+            large_text = "\n".join([f"Line {i}: " + "x" * 100 for i in range(500)])
 
             files = {
                 '/tmp/large_data.csv': large_csv,
