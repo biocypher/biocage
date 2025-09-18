@@ -49,7 +49,7 @@ class PersistentExecutionError(ExecutionError):
         error_message: str,
         code: Optional[str] = None,
         container_id: Optional[str] = None,
-        session_state: Optional[dict[str, Any]] = None
+        session_state: Optional[dict[str, Any]] = None,
     ) -> None:
         """
         Initialize a persistent execution error.
@@ -112,7 +112,7 @@ class PersistentExecutor(BaseExecutor):
         default_timeout: int = 30,
         memory_limit: str = DEFAULT_MEMORY_LIMIT,
         cpu_limit: str = DEFAULT_CPU_LIMIT,
-        network_access: bool = False
+        network_access: bool = False,
     ) -> None:
         """
         Initialize the persistent executor.
@@ -150,7 +150,10 @@ class PersistentExecutor(BaseExecutor):
 
         logger.info(
             "Initialized PersistentExecutor: image=%s, memory=%s, cpu=%s, network=%s",
-            image_name, memory_limit, cpu_limit, network_access
+            image_name,
+            memory_limit,
+            cpu_limit,
+            network_access,
         )
 
     def _initialize_internal(self) -> None:
@@ -180,12 +183,7 @@ class PersistentExecutor(BaseExecutor):
         except (ContainerLifecycleError, Exception) as e:
             raise PersistentExecutionError(f"Failed to initialize persistent container: {e}") from e
 
-    def _execute_code_internal(
-        self,
-        code: str,
-        timeout: Optional[int] = None,
-        **kwargs
-    ) -> SandboxExecutionResult:
+    def _execute_code_internal(self, code: str, timeout: Optional[int] = None, **kwargs) -> SandboxExecutionResult:
         """
         Execute code in the persistent container.
 
@@ -201,11 +199,7 @@ class PersistentExecutor(BaseExecutor):
             PersistentExecutionError: If execution fails
         """
         if not self.container_lifecycle.is_container_healthy():
-            raise PersistentExecutionError(
-                "Container is not healthy",
-                code,
-                self.container_id
-            )
+            raise PersistentExecutionError("Container is not healthy", code, self.container_id)
 
         self.log_execution_start(code, timeout or self.default_timeout)
         start_time = time.time()
@@ -213,9 +207,9 @@ class PersistentExecutor(BaseExecutor):
         try:
             # For persistent execution, we try to preserve partial state on failure
             # if shutdown_on_failure is False in kwargs
-            shutdown_on_failure = kwargs.get('shutdown_on_failure', True)
+            shutdown_on_failure = kwargs.get("shutdown_on_failure", True)
 
-            if not shutdown_on_failure and ';' in code:
+            if not shutdown_on_failure and ";" in code:
                 # Try to execute statements individually to preserve partial state
                 return self._execute_statements_individually(code, timeout)
             else:
@@ -225,18 +219,13 @@ class PersistentExecutor(BaseExecutor):
                 # Execute the complete script with session restoration via stdin for Unicode support
                 exec_command = ["python"]
                 result = self.container_lifecycle.execute_command(
-                    exec_command,
-                    timeout=timeout or self.default_timeout,
-                    input_data=execution_script
+                    exec_command, timeout=timeout or self.default_timeout, input_data=execution_script
                 )
 
             # Create execution result
             execution_time = time.time() - start_time
             sandbox_result = SandboxExecutionResult(
-                stdout=result.stdout,
-                stderr=result.stderr,
-                exit_code=result.returncode,
-                execution_time=execution_time
+                stdout=result.stdout, stderr=result.stderr, exit_code=result.returncode, execution_time=execution_time
             )
 
             # Track code in session for persistence
@@ -256,14 +245,14 @@ class PersistentExecutor(BaseExecutor):
             python_stdout = self._extract_python_stdout(e)
 
             # Set proper exit code for timeout
-            exit_code = 124 if "timed out" in str(e).lower() else getattr(e, 'exit_code', 1)
+            exit_code = 124 if "timed out" in str(e).lower() else getattr(e, "exit_code", 1)
 
             return SandboxExecutionResult(
                 stdout=python_stdout,
                 stderr=python_stderr,
                 exit_code=exit_code,
                 execution_time=execution_time,
-                error=error_msg
+                error=error_msg,
             )
 
     def _prepare_execution_script(self, code: str) -> str:
@@ -358,7 +347,7 @@ class PersistentExecutor(BaseExecutor):
             Execution result with combined output and success status
         """
         # Split code by semicolons and execute each statement separately
-        statements = [stmt.strip() for stmt in code.split(';') if stmt.strip()]
+        statements = [stmt.strip() for stmt in code.split(";") if stmt.strip()]
 
         combined_stdout = ""
         combined_stderr = ""
@@ -373,9 +362,7 @@ class PersistentExecutor(BaseExecutor):
                 exec_command = ["python"]
                 start_time = time.time()
                 result = self.container_lifecycle.execute_command(
-                    exec_command,
-                    timeout=timeout or self.default_timeout,
-                    input_data=execution_script
+                    exec_command, timeout=timeout or self.default_timeout, input_data=execution_script
                 )
 
                 execution_time += time.time() - start_time
@@ -404,23 +391,15 @@ class PersistentExecutor(BaseExecutor):
                     stderr=combined_stderr,
                     exit_code=1,  # Failed overall
                     execution_time=execution_time,
-                    error=f"Statement {i+1} failed: {e}"
+                    error=f"Statement {i + 1} failed: {e}",
                 )
 
         # All statements succeeded
         return SandboxExecutionResult(
-            stdout=combined_stdout,
-            stderr=combined_stderr,
-            exit_code=0,
-            execution_time=execution_time
+            stdout=combined_stdout, stderr=combined_stderr, exit_code=0, execution_time=execution_time
         )
 
-    def expose_path(
-        self,
-        host_path: str,
-        container_path: Optional[str] = None,
-        readonly: bool = False
-    ) -> str:
+    def expose_path(self, host_path: str, container_path: Optional[str] = None, readonly: bool = False) -> str:
         """
         Expose a host path to the persistent container.
 
@@ -487,17 +466,20 @@ class PersistentExecutor(BaseExecutor):
 
         try:
             # Extract parameters with defaults
-            memory_limit = kwargs.get('memory_limit', self.memory_limit)
-            cpu_limit = kwargs.get('cpu_limit', self.cpu_limit)
-            network_access = kwargs.get('network_access', self.network_access)
+            memory_limit = kwargs.get("memory_limit", self.memory_limit)
+            cpu_limit = kwargs.get("cpu_limit", self.cpu_limit)
+            network_access = kwargs.get("network_access", self.network_access)
+            image_name = kwargs.get("image_name", self.image_name)
 
             # Update instance variables if new values provided
-            if 'memory_limit' in kwargs:
+            if "memory_limit" in kwargs:
                 self.memory_limit = memory_limit
-            if 'cpu_limit' in kwargs:
+            if "cpu_limit" in kwargs:
                 self.cpu_limit = cpu_limit
-            if 'network_access' in kwargs:
+            if "network_access" in kwargs:
                 self.network_access = network_access
+            if "image_name" in kwargs:
+                self.image_name = image_name
 
             # Get current session script to restore after restart
             session_script = self.session_script_generator.generate_session_script(include_history=True)
@@ -509,6 +491,7 @@ class PersistentExecutor(BaseExecutor):
                 network_access=network_access,
                 volumes=self.path_manager.get_volume_mounts(),
                 read_only=False,
+                image_name=self.image_name,
             )
 
             # Restore session state if we have any
@@ -527,12 +510,7 @@ class PersistentExecutor(BaseExecutor):
             logger.exception(error_msg)
             raise PersistentExecutionError(error_msg) from e
 
-    def expose_directory(
-        self,
-        host_dir: str,
-        container_dir: Optional[str] = None,
-        readonly: bool = False
-    ) -> str:
+    def expose_directory(self, host_dir: str, container_dir: Optional[str] = None, readonly: bool = False) -> str:
         """
         Expose a host directory to the persistent container.
 
@@ -568,7 +546,7 @@ class PersistentExecutor(BaseExecutor):
             "container_id": self.container_id,
             "container_healthy": self.container_lifecycle.is_container_healthy(),
             "exposed_paths": len(self.path_manager.get_exposed_paths_info()),
-            "temp_files": len(self.temp_file_manager.get_managed_paths()["files"])
+            "temp_files": len(self.temp_file_manager.get_managed_paths()["files"]),
         })
         return base_summary
 
@@ -655,10 +633,7 @@ class PersistentExecutor(BaseExecutor):
         Returns:
             True if container is healthy and ready
         """
-        return (
-            self.container_id is not None and
-            self.container_lifecycle.is_container_healthy()
-        )
+        return self.container_id is not None and self.container_lifecycle.is_container_healthy()
 
     def _validate_environment_internal(self) -> bool:
         """

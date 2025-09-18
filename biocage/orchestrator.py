@@ -20,6 +20,7 @@ Example:
 """
 
 import logging
+import time
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -27,6 +28,7 @@ from .constants import DEFAULT_CPU_LIMIT, DEFAULT_IMAGE_NAME, DEFAULT_MEMORY_LIM
 from .execution import EphemeralExecutor, PersistentExecutor
 from .models import SandboxExecutionResult
 from .validation import validate_timeout
+from .intelligence import SmartImageManager
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,13 @@ class BioCageOrchestrator:
         cpu_limit: str = DEFAULT_CPU_LIMIT,
         network_access: bool = False,
         execution_mode: str = "auto",
+        auto_detect_dependencies: bool = False,
+        auto_cleanup_dynamic_images: bool = True,
+        cleanup_policy: str = "age",
+        cleanup_max_age: int = 604800,  # 7 days
+        cleanup_max_count: Optional[int] = None,
+        cleanup_max_size_mb: Optional[int] = None,
+        cleanup_exclude_patterns: Optional[list[str]] = None,
     ) -> None:
         """
         Initialize the BioCage orchestrator.
@@ -89,13 +98,26 @@ class BioCageOrchestrator:
             cpu_limit: CPU limit for containers (e.g., "1.0", "2.0")
             network_access: Whether to allow network access in containers
             execution_mode: Execution mode ('auto', 'persistent', 'ephemeral')
+            auto_detect_dependencies: Whether to automatically detect dependencies and build images
+            auto_cleanup_dynamic_images: Whether to automatically remove dynamically created images on cleanup
+            cleanup_policy: Cleanup policy - "age", "count", "size", or "combined"
+            cleanup_max_age: Maximum age in seconds for images to keep (age-based policy)
+            cleanup_max_count: Maximum number of images to keep (count-based policy)
+            cleanup_max_size_mb: Maximum total size in MB (size-based policy)
+            cleanup_exclude_patterns: List of image name patterns to exclude from cleanup
 
         Example:
             >>> orchestrator = BioCageOrchestrator(
             ...     image_name="python:3.11",
             ...     memory_limit="1g",
             ...     cpu_limit="2.0",
-            ...     execution_mode="persistent"
+            ...     execution_mode="persistent",
+            ...     auto_detect_dependencies=True,
+            ...     auto_cleanup_dynamic_images=True,
+            ...     cleanup_policy="combined",
+            ...     cleanup_max_age=86400,  # 1 day
+            ...     cleanup_max_count=10,
+            ...     cleanup_max_size_mb=1000  # 1GB
             ... )
         """
         self.image_name = image_name
@@ -103,22 +125,47 @@ class BioCageOrchestrator:
         self.cpu_limit = cpu_limit
         self.network_access = network_access
         self.execution_mode = execution_mode
+        self.auto_detect_dependencies = auto_detect_dependencies
+        self.auto_cleanup_dynamic_images = auto_cleanup_dynamic_images
+        
+        # Cleanup configuration
+        self.cleanup_policy = cleanup_policy
+        self.cleanup_max_age = cleanup_max_age
+        self.cleanup_max_count = cleanup_max_count
+        self.cleanup_max_size_mb = cleanup_max_size_mb
+        self.cleanup_exclude_patterns = cleanup_exclude_patterns or []
+        
+        # Cleanup statistics
+        self.cleanup_stats = {
+            "total_images_removed": 0,
+            "total_space_saved_bytes": 0,
+            "last_cleanup_time": None,
+            "cleanup_operations": []
+        }
 
         # Execution state
         self.current_executor: Optional[Union[PersistentExecutor, EphemeralExecutor]] = None
         self.is_running = False
         self._context_manager_active = False
 
+        # Track dynamically created images for cleanup
+        self._dynamic_images_created = set()
+
+        # Smart image manager for automatic dependency detection
+        self.smart_image_manager: Optional[SmartImageManager] = None
+        if auto_detect_dependencies:
+            self.smart_image_manager = SmartImageManager()
+
         logger.info(
             "Initialized BioCageOrchestrator: image=%s, mode=%s, memory=%s, cpu=%s",
-            image_name, execution_mode, memory_limit, cpu_limit
+            image_name,
+            execution_mode,
+            memory_limit,
+            cpu_limit,
         )
 
     def start_container(
-        self,
-        memory_limit: Optional[str] = None,
-        cpu_limit: Optional[str] = None,
-        network_access: Optional[bool] = None
+        self, memory_limit: Optional[str] = None, cpu_limit: Optional[str] = None, network_access: Optional[bool] = None
     ) -> str:
         """
         Start a persistent container for stateful execution.
@@ -154,10 +201,7 @@ class BioCageOrchestrator:
 
         # Create persistent executor
         self.current_executor = PersistentExecutor(
-            image_name=self.image_name,
-            memory_limit=memory,
-            cpu_limit=cpu,
-            network_access=network
+            image_name=self.image_name, memory_limit=memory, cpu_limit=cpu, network_access=network
         )
 
         # Initialize and get container ID
@@ -197,11 +241,7 @@ class BioCageOrchestrator:
             self.is_running = False
 
     def run(
-        self,
-        code: str,
-        timeout: int = 30,
-        stdin_input: Optional[str] = None,
-        shutdown_on_failure: bool = True
+        self, code: str, timeout: int = 30, stdin_input: Optional[str] = None, shutdown_on_failure: bool = True
     ) -> SandboxExecutionResult:
         """
         Execute Python code in the sandbox.
@@ -238,6 +278,31 @@ class BioCageOrchestrator:
             )
 
         try:
+            # Handle automatic dependency detection
+            if self.smart_image_manager:
+                image_name = self.smart_image_manager.get_or_create_image(code)
+                if image_name != self.image_name:
+                    logger.info("Using dynamically generated image: %s", image_name)
+                    # Track this dynamic image for cleanup
+                    self._dynamic_images_created.add(image_name)
+
+                    # Update image name for this execution
+                    old_image_name = self.image_name
+                    self.image_name = image_name
+
+                    # If we have a running executor, restart it with new image
+                    if self.is_running and self.current_executor:
+                        logger.info("Restarting container with new image: %s", image_name)
+                        self.restart_container(image_name=image_name)
+                    else:
+                        # For ephemeral mode, we need to create a new executor with the new image
+                        if self.current_executor:
+                            self.current_executor.cleanup()
+                        self.current_executor = None
+
+                    # Restore original image name for future executions
+                    self.image_name = old_image_name
+
             # Determine execution strategy
             executor = self._get_executor()
 
@@ -253,11 +318,7 @@ class BioCageOrchestrator:
 
         except Exception as e:
             logger.exception("Code execution failed: %s", e)
-            error_result = SandboxExecutionResult(
-                error=f"Execution failed: {e}",
-                exit_code=1,
-                execution_time=0.0
-            )
+            error_result = SandboxExecutionResult(error=f"Execution failed: {e}", exit_code=1, execution_time=0.0)
 
             # Shutdown on critical failure
             if shutdown_on_failure and self.is_running:
@@ -266,10 +327,7 @@ class BioCageOrchestrator:
             return error_result
 
     def execute_with_files(
-        self,
-        code: str,
-        files: dict[str, str],
-        timeout: Optional[int] = None
+        self, code: str, files: dict[str, str], timeout: Optional[int] = None
     ) -> SandboxExecutionResult:
         """
         Execute Python code with temporary files created in the container.
@@ -315,7 +373,7 @@ class BioCageOrchestrator:
         executor = self._get_executor()
 
         # Use EphemeralExecutor's execute_with_files if available
-        if hasattr(executor, 'execute_with_files'):
+        if hasattr(executor, "execute_with_files"):
             return executor.execute_with_files(code, files, timeout)
 
         # For PersistentExecutor, we need to create files manually and then execute
@@ -343,7 +401,7 @@ with open('{file_path}', 'w') as f:
                     stderr=f"Failed to create temporary files: {creation_result.stderr}",
                     exit_code=1,
                     execution_time=creation_result.execution_time,
-                    error="File creation failed"
+                    error="File creation failed",
                 )
 
             # Execute the actual code
@@ -358,18 +416,11 @@ with open('{file_path}', 'w') as f:
         except Exception as e:
             logger.exception("execute_with_files failed: %s", e)
             return SandboxExecutionResult(
-                stdout="",
-                stderr=f"execute_with_files failed: {e}",
-                exit_code=1,
-                execution_time=0.0,
-                error=str(e)
+                stdout="", stderr=f"execute_with_files failed: {e}", exit_code=1, execution_time=0.0, error=str(e)
             )
 
     def expose_path(
-        self,
-        host_path: Union[str, Path],
-        container_path: Optional[str] = None,
-        readonly: bool = True
+        self, host_path: Union[str, Path], container_path: Optional[str] = None, readonly: bool = True
     ) -> str:
         """
         Expose a host path to containers.
@@ -407,11 +458,7 @@ with open('{file_path}', 'w') as f:
         else:
             return executor.expose_path(str(host_path), container_path, readonly)
 
-    def expose_file(
-        self,
-        host_file_path: Union[str, Path],
-        container_file_path: Optional[str] = None
-    ) -> str:
+    def expose_file(self, host_file_path: Union[str, Path], container_file_path: Optional[str] = None) -> str:
         """
         Expose a single file to containers.
 
@@ -430,10 +477,7 @@ with open('{file_path}', 'w') as f:
         return self.expose_path(host_file_path, container_file_path, readonly=True)
 
     def expose_directory(
-        self,
-        host_dir_path: Union[str, Path],
-        container_dir_path: Optional[str] = None,
-        readonly: bool = True
+        self, host_dir_path: Union[str, Path], container_dir_path: Optional[str] = None, readonly: bool = True
     ) -> str:
         """
         Expose a directory to containers.
@@ -473,15 +517,14 @@ with open('{file_path}', 'w') as f:
             raise RuntimeError("No persistent container to restart")
 
         # Update configuration with provided kwargs
-        memory = kwargs.get('memory_limit', self.memory_limit)
-        cpu = kwargs.get('cpu_limit', self.cpu_limit)
-        network = kwargs.get('network_access', self.network_access)
+        memory = kwargs.get("memory_limit", self.memory_limit)
+        cpu = kwargs.get("cpu_limit", self.cpu_limit)
+        network = kwargs.get("network_access", self.network_access)
+        image_name = kwargs.get("image_name", self.image_name)
 
         # Restart the persistent executor
         container_id = self.current_executor.restart_container(
-            memory_limit=memory,
-            cpu_limit=cpu,
-            network_access=network
+            memory_limit=memory, cpu_limit=cpu, network_access=network, image_name=image_name
         )
 
         logger.info("Restarted persistent container: %s", container_id[:12])
@@ -575,17 +618,181 @@ print(f"Created temp file: {container_path}")
             raise RuntimeError(f"Failed to create temp file: {result.stderr}")
 
         # Track the file in the executor's temp file manager for cleanup
-        if hasattr(self.current_executor, 'temp_file_manager'):
+        if hasattr(self.current_executor, "temp_file_manager"):
             # Add to the files list for tracking (as container path)
             self.current_executor.temp_file_manager.temp_files.append(container_path)
 
         return container_path
+
+    def _cleanup_dynamic_images(self) -> None:
+        """
+        Clean up dynamically created Docker images.
+
+        This method removes all images that were created during the current session
+        when auto_cleanup_dynamic_images is enabled. It includes enhanced error handling,
+        retry logic, and proper cleanup of dependent resources.
+        """
+        if not self._dynamic_images_created:
+            logger.debug("No dynamic images to clean up")
+            return
+
+        logger.info("Starting cleanup of %d dynamically created images", len(self._dynamic_images_created))
+
+        # Get docker client
+        docker_client = None
+        if hasattr(self, "smart_image_manager") and self.smart_image_manager:
+            docker_client = self.smart_image_manager.docker_client
+        else:
+            from .container.docker_client import DockerClient
+            docker_client = DockerClient()
+
+        successful_removals = 0
+        failed_removals = 0
+        space_saved = 0
+
+        for image_name in list(self._dynamic_images_created):
+            try:
+                # First check if image exists
+                if not self._image_exists(image_name, docker_client):
+                    logger.debug("Image %s no longer exists, skipping cleanup", image_name)
+                    self._dynamic_images_created.discard(image_name)
+                    continue
+
+                # Get image size before removal for statistics
+                image_size = self._get_image_size(image_name, docker_client)
+
+                # Stop and remove containers using this image
+                self._cleanup_containers_using_image(image_name, docker_client)
+
+                # Attempt to remove the image with retry logic
+                if self._remove_image_with_retry(image_name, docker_client):
+                    successful_removals += 1
+                    space_saved += image_size
+                    logger.info("Successfully removed dynamic image: %s (saved %s)", 
+                              image_name, self._format_bytes(image_size))
+                    self._dynamic_images_created.discard(image_name)
+                else:
+                    failed_removals += 1
+                    logger.warning("Failed to remove dynamic image after retries: %s", image_name)
+
+            except Exception as e:
+                failed_removals += 1
+                logger.exception("Error cleaning up dynamic image %s: %s", image_name, e)
+                # Continue with other images even if one fails
+
+        # Log cleanup summary
+        logger.info("Dynamic image cleanup completed: %d removed, %d failed, %s saved", 
+                   successful_removals, failed_removals, self._format_bytes(space_saved))
+
+        # Clear SmartImageManager cache if available
+        if self.smart_image_manager:
+            self._sync_smart_image_manager_cache()
+
+    def _image_exists(self, image_name: str, docker_client) -> bool:
+        """Check if a Docker image exists."""
+        try:
+            images = docker_client.list_images(image_name)
+            return len(images) > 0
+        except Exception:
+            return False
+
+    def _get_image_size(self, image_name: str, docker_client) -> int:
+        """Get the size of a Docker image in bytes."""
+        try:
+            command = ["docker", "images", image_name, "--format", "{{.Size}}"]
+            result = docker_client.run_command(command)
+            
+            if result.stdout.strip():
+                # Parse size string (e.g., "1.2GB", "500MB", "100KB")
+                size_str = result.stdout.strip().upper()
+                if "GB" in size_str:
+                    return int(float(size_str.replace("GB", "")) * 1024 * 1024 * 1024)
+                elif "MB" in size_str:
+                    return int(float(size_str.replace("MB", "")) * 1024 * 1024)
+                elif "KB" in size_str:
+                    return int(float(size_str.replace("KB", "")) * 1024)
+                else:
+                    return int(size_str)  # Assume bytes
+            return 0
+        except Exception:
+            return 0
+
+    def _cleanup_containers_using_image(self, image_name: str, docker_client) -> None:
+        """Stop and remove containers that are using the specified image."""
+        try:
+            # Find containers using this image
+            command = ["docker", "ps", "-a", "--filter", f"ancestor={image_name}", "--format", "{{.ID}}"]
+            result = docker_client.run_command(command)
+            
+            container_ids = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            
+            for container_id in container_ids:
+                if container_id.strip():
+                    try:
+                        # Stop container if running
+                        stop_command = ["docker", "stop", container_id.strip()]
+                        docker_client.run_command(stop_command)
+                        
+                        # Remove container
+                        remove_command = ["docker", "rm", "-f", container_id.strip()]
+                        docker_client.run_command(remove_command)
+                        
+                        logger.debug("Stopped and removed container %s using image %s", 
+                                   container_id.strip()[:12], image_name)
+                    except Exception as e:
+                        logger.warning("Failed to cleanup container %s: %s", 
+                                     container_id.strip()[:12], e)
+        except Exception as e:
+            logger.warning("Failed to find containers using image %s: %s", image_name, e)
+
+    def _remove_image_with_retry(self, image_name: str, docker_client, max_retries: int = 3) -> bool:
+        """Remove a Docker image with retry logic."""
+        import time
+        
+        for attempt in range(max_retries):
+            try:
+                command = ["docker", "rmi", "-f", image_name]
+                docker_client.run_command(command)
+                return True
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.warning("Final attempt failed to remove image %s: %s", image_name, e)
+                    return False
+                
+                logger.debug("Attempt %d failed to remove image %s, retrying...: %s", 
+                           attempt + 1, image_name, e)
+                time.sleep(1)  # Wait before retry
+        
+        return False
+
+    def _format_bytes(self, bytes_value: int) -> str:
+        """Format bytes into human-readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if bytes_value < 1024.0:
+                return f"{bytes_value:.1f}{unit}"
+            bytes_value /= 1024.0
+        return f"{bytes_value:.1f}TB"
+
+    def _sync_smart_image_manager_cache(self) -> None:
+        """Synchronize the SmartImageManager cache with actual image state."""
+        if not self.smart_image_manager:
+            return
+        
+        # Remove cache entries for images that no longer exist
+        for fingerprint in list(self.smart_image_manager.image_cache.keys()):
+            cache_entry = self.smart_image_manager.image_cache[fingerprint]
+            image_name = cache_entry["image_name"]
+            
+            if not self._image_exists(image_name, self.smart_image_manager.docker_client):
+                logger.debug("Removing cache entry for non-existent image: %s", image_name)
+                del self.smart_image_manager.image_cache[fingerprint]
 
     def cleanup(self) -> None:
         """
         Clean up all resources used by the orchestrator.
 
         This method stops any running containers, cleans up temporary files,
+        removes dynamically created images (if auto_cleanup_dynamic_images is enabled),
         and resets the orchestrator state.
 
         Example:
@@ -600,6 +807,13 @@ print(f"Created temp file: {container_path}")
             if self.current_executor:
                 self.current_executor.cleanup()
 
+            # Auto-cleanup dynamic images if enabled
+            if self.auto_cleanup_dynamic_images:
+                self._cleanup_dynamic_images()
+
+            # Note: SmartImageManager cleanup is handled in __del__ method
+            # We don't clear cache here to allow image reuse across multiple runs
+
             # Reset state
             self.current_executor = None
             self.is_running = False
@@ -608,6 +822,304 @@ print(f"Created temp file: {container_path}")
 
         except Exception as e:
             logger.exception("Error during orchestrator cleanup: %s", e)
+
+    def perform_smart_cleanup(self) -> dict:
+        """
+        Perform smart cleanup using the configured cleanup policy.
+        
+        This method uses the SmartImageManager's advanced cleanup capabilities
+        with the configured policy (age, count, size, or combined).
+        
+        Returns:
+            Dictionary with cleanup statistics and results
+            
+        Example:
+            >>> orchestrator = BioCageOrchestrator(
+            ...     cleanup_policy="combined",
+            ...     cleanup_max_age=86400,
+            ...     cleanup_max_count=10,
+            ...     cleanup_max_size_mb=1000
+            ... )
+            >>> stats = orchestrator.perform_smart_cleanup()
+            >>> print(f"Removed {stats['removed_count']} images, saved {stats['space_saved_bytes']} bytes")
+        """
+        if not self.smart_image_manager:
+            logger.warning("SmartImageManager not available, skipping smart cleanup")
+            return {"error": "SmartImageManager not available"}
+        
+        logger.info("Performing smart cleanup with policy: %s", self.cleanup_policy)
+        
+        try:
+            # Perform cleanup using SmartImageManager
+            cleanup_result = self.smart_image_manager.cleanup_old_images(
+                max_age=self.cleanup_max_age,
+                policy=self.cleanup_policy,
+                max_count=self.cleanup_max_count,
+                max_size_mb=self.cleanup_max_size_mb,
+                exclude_patterns=self.cleanup_exclude_patterns
+            )
+            
+            # Update orchestrator statistics
+            if cleanup_result.get("removed_count", 0) > 0:
+                self.cleanup_stats["total_images_removed"] += cleanup_result["removed_count"]
+                self.cleanup_stats["total_space_saved_bytes"] += cleanup_result.get("space_saved_bytes", 0)
+                self.cleanup_stats["last_cleanup_time"] = time.time()
+                self.cleanup_stats["cleanup_operations"].append({
+                    "timestamp": time.time(),
+                    "policy": self.cleanup_policy,
+                    "result": cleanup_result
+                })
+            
+            logger.info("Smart cleanup completed: %s", cleanup_result)
+            return cleanup_result
+            
+        except Exception as e:
+            logger.exception("Smart cleanup failed: %s", e)
+            return {"error": str(e)}
+
+    def get_cleanup_statistics(self) -> dict:
+        """
+        Get comprehensive cleanup statistics and monitoring information.
+        
+        Returns:
+            Dictionary with detailed cleanup statistics, current state,
+            and performance metrics
+            
+        Example:
+            >>> orchestrator = BioCageOrchestrator()
+            >>> stats = orchestrator.get_cleanup_statistics()
+            >>> print(f"Total images removed: {stats['total_images_removed']}")
+            >>> print(f"Total space saved: {stats['total_space_saved_formatted']}")
+        """
+        import time
+        
+        current_time = time.time()
+        
+        # Get current dynamic images info
+        dynamic_images_info = []
+        for image_name in self._dynamic_images_created:
+            image_size = 0
+            try:
+                if self.smart_image_manager:
+                    image_size = self.smart_image_manager._get_image_size(image_name)
+            except Exception:
+                pass
+            
+            dynamic_images_info.append({
+                "name": image_name,
+                "size_bytes": image_size,
+                "size_formatted": self._format_bytes(image_size)
+            })
+        
+        # Calculate total size of current dynamic images
+        total_dynamic_size = sum(img["size_bytes"] for img in dynamic_images_info)
+        
+        # Get SmartImageManager cache info if available
+        cache_info = {}
+        if self.smart_image_manager:
+            try:
+                cache_info = self.smart_image_manager.get_cache_info()
+            except Exception as e:
+                logger.warning("Failed to get cache info: %s", e)
+                cache_info = {"error": str(e)}
+        
+        # Compile comprehensive statistics
+        stats = {
+            # Current state
+            "current_dynamic_images": {
+                "count": len(self._dynamic_images_created),
+                "total_size_bytes": total_dynamic_size,
+                "total_size_formatted": self._format_bytes(total_dynamic_size),
+                "images": dynamic_images_info
+            },
+            
+            # Cleanup configuration
+            "cleanup_config": {
+                "auto_cleanup_enabled": self.auto_cleanup_dynamic_images,
+                "policy": self.cleanup_policy,
+                "max_age_seconds": self.cleanup_max_age,
+                "max_age_formatted": self._format_age(self.cleanup_max_age),
+                "max_count": self.cleanup_max_count,
+                "max_size_mb": self.cleanup_max_size_mb,
+                "exclude_patterns": self.cleanup_exclude_patterns
+            },
+            
+            # Historical statistics
+            "historical_stats": {
+                "total_images_removed": self.cleanup_stats["total_images_removed"],
+                "total_space_saved_bytes": self.cleanup_stats["total_space_saved_bytes"],
+                "total_space_saved_formatted": self._format_bytes(self.cleanup_stats["total_space_saved_bytes"]),
+                "last_cleanup_time": self.cleanup_stats["last_cleanup_time"],
+                "last_cleanup_time_formatted": self._format_timestamp(self.cleanup_stats["last_cleanup_time"]),
+                "total_cleanup_operations": len(self.cleanup_stats["cleanup_operations"])
+            },
+            
+            # SmartImageManager cache info
+            "cache_info": cache_info,
+            
+            # System info
+            "system_info": {
+                "smart_image_manager_available": self.smart_image_manager is not None,
+                "auto_detect_dependencies": self.auto_detect_dependencies,
+                "current_time": current_time,
+                "current_time_formatted": self._format_timestamp(current_time)
+            }
+        }
+        
+        return stats
+
+    def get_dynamic_images_info(self) -> dict:
+        """
+        Get information about currently tracked dynamic images.
+        
+        Returns:
+            Dictionary with dynamic image information
+            
+        Example:
+            >>> orchestrator = BioCageOrchestrator()
+            >>> info = orchestrator.get_dynamic_images_info()
+            >>> for img in info['images']:
+            ...     print(f"{img['name']}: {img['size_formatted']}")
+        """
+        images_info = []
+        total_size = 0
+        
+        for image_name in self._dynamic_images_created:
+            image_size = 0
+            exists = False
+            
+            try:
+                # Check if image exists and get size
+                if self.smart_image_manager:
+                    exists = self.smart_image_manager._image_exists(image_name)
+                    if exists:
+                        image_size = self.smart_image_manager._get_image_size(image_name)
+                else:
+                    # Fallback check
+                    from .container.docker_client import DockerClient
+                    docker_client = DockerClient()
+                    exists = self._image_exists(image_name, docker_client)
+                    if exists:
+                        image_size = self._get_image_size(image_name, docker_client)
+                
+                total_size += image_size
+                
+            except Exception as e:
+                logger.warning("Failed to get info for image %s: %s", image_name, e)
+            
+            images_info.append({
+                "name": image_name,
+                "exists": exists,
+                "size_bytes": image_size,
+                "size_formatted": self._format_bytes(image_size)
+            })
+        
+        return {
+            "count": len(images_info),
+            "total_size_bytes": total_size,
+            "total_size_formatted": self._format_bytes(total_size),
+            "images": images_info
+        }
+
+    def configure_cleanup_policy(self, policy: str = None, max_age: int = None, 
+                               max_count: int = None, max_size_mb: int = None,
+                               exclude_patterns: list[str] = None) -> None:
+        """
+        Configure cleanup policy parameters.
+        
+        Args:
+            policy: Cleanup policy - "age", "count", "size", or "combined"
+            max_age: Maximum age in seconds for images to keep
+            max_count: Maximum number of images to keep
+            max_size_mb: Maximum total size in MB
+            exclude_patterns: List of image name patterns to exclude from cleanup
+            
+        Example:
+            >>> orchestrator = BioCageOrchestrator()
+            >>> orchestrator.configure_cleanup_policy(
+            ...     policy="combined",
+            ...     max_age=86400,  # 1 day
+            ...     max_count=20,
+            ...     max_size_mb=2000  # 2GB
+            ... )
+        """
+        if policy is not None:
+            self.cleanup_policy = policy
+        if max_age is not None:
+            self.cleanup_max_age = max_age
+        if max_count is not None:
+            self.cleanup_max_count = max_count
+        if max_size_mb is not None:
+            self.cleanup_max_size_mb = max_size_mb
+        if exclude_patterns is not None:
+            self.cleanup_exclude_patterns = exclude_patterns
+        
+        logger.info("Cleanup policy updated: %s", self.get_cleanup_statistics()["cleanup_config"])
+
+    def add_cleanup_exclusion(self, pattern: str) -> None:
+        """
+        Add a pattern to the cleanup exclusion list.
+        
+        Images matching this pattern will not be cleaned up.
+        
+        Args:
+            pattern: Pattern string to match against image names
+            
+        Example:
+            >>> orchestrator = BioCageOrchestrator()
+            >>> orchestrator.add_cleanup_exclusion("important-image")
+            >>> orchestrator.add_cleanup_exclusion("production-*")
+        """
+        if pattern not in self.cleanup_exclude_patterns:
+            self.cleanup_exclude_patterns.append(pattern)
+            logger.info("Added cleanup exclusion pattern: %s", pattern)
+
+    def remove_cleanup_exclusion(self, pattern: str) -> bool:
+        """
+        Remove a pattern from the cleanup exclusion list.
+        
+        Args:
+            pattern: Pattern string to remove
+            
+        Returns:
+            True if pattern was found and removed, False otherwise
+            
+        Example:
+            >>> orchestrator = BioCageOrchestrator()
+            >>> orchestrator.remove_cleanup_exclusion("important-image")
+        """
+        if pattern in self.cleanup_exclude_patterns:
+            self.cleanup_exclude_patterns.remove(pattern)
+            logger.info("Removed cleanup exclusion pattern: %s", pattern)
+            return True
+        return False
+
+    def _format_age(self, age_seconds: int) -> str:
+        """Format age in human-readable format."""
+        if age_seconds < 3600:
+            return f"{age_seconds / 60:.1f} minutes"
+        elif age_seconds < 86400:
+            return f"{age_seconds / 3600:.1f} hours"
+        else:
+            return f"{age_seconds / 86400:.1f} days"
+
+    def _format_timestamp(self, timestamp: Optional[float]) -> str:
+        """Format timestamp in human-readable format."""
+        if timestamp is None:
+            return "Never"
+        
+        import time
+        current_time = time.time()
+        age = current_time - timestamp
+        
+        if age < 60:
+            return f"{int(age)} seconds ago"
+        elif age < 3600:
+            return f"{int(age / 60)} minutes ago"
+        elif age < 86400:
+            return f"{int(age / 3600)} hours ago"
+        else:
+            return f"{int(age / 86400)} days ago"
 
     def configure_context_manager(
         self,
@@ -651,21 +1163,21 @@ print(f"Created temp file: {container_path}")
         self._context_manager_active = True
 
         # Apply path exposures if configured
-        if hasattr(self, '_expose_files'):
+        if hasattr(self, "_expose_files"):
             for host_path, container_path in self._expose_files.items():
                 self.expose_file(host_path, container_path)
 
-        if hasattr(self, '_expose_directories'):
+        if hasattr(self, "_expose_directories"):
             for host_path, container_path in self._expose_directories.items():
                 self.expose_directory(host_path, container_path, readonly=True)
 
-        if hasattr(self, '_expose_directories_rw'):
+        if hasattr(self, "_expose_directories_rw"):
             for host_path, container_path in self._expose_directories_rw.items():
                 self.expose_directory(host_path, container_path, readonly=False)
 
         # If execution mode is persistent or auto, start a persistent container
         if self.execution_mode in ("persistent", "auto") and not self.is_running:
-            kwargs = getattr(self, '_context_kwargs', {})
+            kwargs = getattr(self, "_context_kwargs", {})
             try:
                 self.start_container(**kwargs)
             except Exception as e:
@@ -702,7 +1214,7 @@ print(f"Created temp file: {container_path}")
                     image_name=self.image_name,
                     memory_limit=self.memory_limit,
                     cpu_limit=self.cpu_limit,
-                    network_access=self.network_access
+                    network_access=self.network_access,
                 )
                 if not self.current_executor.is_initialized:
                     self.current_executor.initialize()
@@ -717,7 +1229,7 @@ print(f"Created temp file: {container_path}")
                     image_name=self.image_name,
                     memory_limit=self.memory_limit,
                     cpu_limit=self.cpu_limit,
-                    network_access=self.network_access
+                    network_access=self.network_access,
                 )
                 if not self.current_executor.is_initialized:
                     self.current_executor.initialize()
@@ -733,15 +1245,17 @@ print(f"Created temp file: {container_path}")
         """
         # Check if we have any existing executor with path exposures
         if self.current_executor:
-            if hasattr(self.current_executor, 'path_manager'):
+            if hasattr(self.current_executor, "path_manager"):
                 exposed_paths = self.current_executor.path_manager.get_exposed_paths_info()
                 if exposed_paths:
                     return True
 
         # Check if we have pending exposures from context manager configuration
-        if (hasattr(self, '_expose_files') or
-            hasattr(self, '_expose_directories') or
-            hasattr(self, '_expose_directories_rw')):
+        if (
+            hasattr(self, "_expose_files")
+            or hasattr(self, "_expose_directories")
+            or hasattr(self, "_expose_directories_rw")
+        ):
             return True
 
         return False
@@ -760,9 +1274,7 @@ print(f"Created temp file: {container_path}")
         else:  # auto mode
             # In auto mode, use persistent if we're in a context manager, already running,
             # or if we have path exposures (which require persistent containers)
-            if (self._context_manager_active or
-                self.is_running or
-                self._has_path_exposures()):
+            if self._context_manager_active or self.is_running or self._has_path_exposures():
                 return "persistent"
             else:
                 return "ephemeral"

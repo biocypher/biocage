@@ -165,6 +165,84 @@ with BioCageOrchestrator(
     result = sandbox.run("resource_intensive_operation()")
 ```
 
+### Smart Dependencies (`examples/basic/smart_dependencies.py`)
+
+Automatic dependency detection and dynamic Docker image generation:
+
+```bash
+python examples/basic/smart_dependencies.py
+```
+
+**Features demonstrated:**
+- 🎯 Automatic dependency detection from Python code
+- 🐳 Dynamic Docker image generation with UV package manager
+- ⚡ Intelligent image caching for performance optimization
+- 📊 Support for data science libraries (pandas, numpy, matplotlib, etc.)
+- 🎨 Visualization library support
+- 💾 Persistent mode compatibility
+- 🛡️ Graceful error handling for invalid packages
+
+**Key examples:**
+```python
+# Basic dependency detection
+with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+    result = sandbox.run("""
+import pandas as pd
+import numpy as np
+
+data = {'Name': ['Alice', 'Bob'], 'Age': [25, 30]}
+df = pd.DataFrame(data)
+print(f"Created DataFrame with shape: {df.shape}")
+""")
+
+# Multiple complex dependencies
+with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+    result = sandbox.run("""
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import json
+
+# Generate sample data and create visualizations
+np.random.seed(42)
+data = np.random.randn(1000, 3)
+df = pd.DataFrame(data, columns=['A', 'B', 'C'])
+
+# Create plots and analysis
+plt.figure(figsize=(10, 6))
+df.hist()
+plt.savefig('/app/workspace/analysis.png')
+print("Analysis completed successfully!")
+""")
+
+# Persistent mode with dependency detection
+sandbox = BioCageOrchestrator(execution_mode="persistent", auto_detect_dependencies=True)
+sandbox.start_container()
+try:
+    # First execution triggers image building
+    result1 = sandbox.run("import pandas as pd\ndf = pd.DataFrame({'x': [1, 2, 3]})")
+    
+    # Subsequent executions reuse the same container and image
+    result2 = sandbox.run("print(f'DataFrame shape: {df.shape}')")
+finally:
+    sandbox.cleanup()
+```
+
+**What you'll learn:**
+- How BioCage automatically detects third-party imports
+- Dynamic Docker image building with optimized package installation
+- Intelligent caching to avoid rebuilding images
+- Error handling for non-existent packages
+- Integration with both persistent and ephemeral execution modes
+- Performance benefits of automatic dependency management
+
+**Performance benefits:**
+- No manual Docker image management required
+- Fast package installation with UV package manager
+- Image caching eliminates redundant builds
+- Automatic optimization for specific dependency sets
+- Seamless workflow for data science and ML tasks
+
 ## API Examples
 
 ### Orchestrator API (`examples/api/orchestrator_examples.py`)

@@ -7,6 +7,7 @@ This comprehensive guide covers BioCage's core features, advanced usage patterns
 - [Core Concepts](#core-concepts)
 - [Execution Modes](#execution-modes)
 - [State Management](#state-management)
+- [Dynamic Image Management](#dynamic-image-management)
 - [File System Operations](#file-system-operations)
 - [Error Handling](#error-handling)
 - [Resource Management](#resource-management)
@@ -216,6 +217,93 @@ with BioCageOrchestrator(
 
     # Clean up large objects
     sandbox.run("del large_array")
+```
+
+## Dynamic Image Management
+
+### Automatic Dependency Detection
+
+BioCage can automatically detect dependencies in your code and create custom Docker images:
+
+```python
+with BioCageOrchestrator(auto_detect_dependencies=True) as sandbox:
+    # Code with pandas and numpy dependencies
+    code = """
+import pandas as pd
+import numpy as np
+
+data = {'Name': ['Alice', 'Bob'], 'Age': [25, 30]}
+df = pd.DataFrame(data)
+print(df)
+"""
+    result = sandbox.run(code)
+    print(result.stdout)
+```
+
+### Auto-Cleanup of Dynamic Images
+
+By default, BioCage automatically removes dynamically created images when the sandbox is closed to save disk space:
+
+```python
+# Default behavior - auto-cleanup enabled
+with BioCageOrchestrator(
+    auto_detect_dependencies=True,
+    auto_cleanup_dynamic_images=True  # This is the default
+) as sandbox:
+    result = sandbox.run("import pandas as pd; print('pandas imported')")
+    # Dynamic image will be automatically removed when context exits
+```
+
+### Disabling Auto-Cleanup
+
+If you want to cache dynamically created images for reuse across multiple sessions:
+
+```python
+# Disable auto-cleanup to cache images
+with BioCageOrchestrator(
+    auto_detect_dependencies=True,
+    auto_cleanup_dynamic_images=False
+) as sandbox:
+    result = sandbox.run("import pandas as pd; print('pandas imported')")
+    # Dynamic image will be preserved for future use
+```
+
+### Manual Cleanup
+
+You can also manually clean up dynamic images while keeping the sandbox running:
+
+```python
+sandbox = BioCageOrchestrator(
+    auto_detect_dependencies=True,
+    auto_cleanup_dynamic_images=False
+)
+
+with sandbox:
+    # Create dynamic images
+    sandbox.run("import pandas as pd")
+    sandbox.run("import numpy as np")
+    
+    # Images are still available for reuse
+    
+# Manually cleanup when done
+sandbox.cleanup()  # This will remove dynamic images if auto_cleanup_dynamic_images=True
+```
+
+### Monitoring Dynamic Images
+
+Check which dynamic images were created during a session:
+
+```python
+sandbox = BioCageOrchestrator(auto_detect_dependencies=True)
+
+with sandbox:
+    sandbox.run("import pandas as pd")
+    sandbox.run("import torch")
+    
+    # Check created images (internal attribute for debugging)
+    print(f"Created {len(sandbox._dynamic_images_created)} dynamic images")
+    for image in sandbox._dynamic_images_created:
+        print(f"  - {image}")
 ```
 
 ## File System Operations

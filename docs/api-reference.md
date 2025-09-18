@@ -33,21 +33,25 @@ class BioCageOrchestrator:
 ```python
 def __init__(
     self,
-    execution_mode: str = "auto",
+    image_name: str = "biocage:latest",
     memory_limit: str = "1g",
     cpu_limit: str = "2.0",
     network_access: bool = False,
-    default_timeout: int = 30,
-    image_name: str = "python:3.11",
-    remove_containers: bool = True
+    execution_mode: str = "auto",
+    auto_detect_dependencies: bool = False,
+    auto_cleanup_dynamic_images: bool = True
 ) -> None
 ```
 
 **Parameters:**
 
-- `execution_mode` (str): Execution strategy - "persistent", "ephemeral", or "auto"
+- `image_name` (str): Default Docker image name for containers
 - `memory_limit` (str): Container memory limit (e.g., "512m", "1g", "2g")
 - `cpu_limit` (str): Container CPU limit (e.g., "1.0", "2.0", "0.5")
+- `network_access` (bool): Whether to allow network access in containers
+- `execution_mode` (str): Execution strategy - "persistent", "ephemeral", or "auto"
+- `auto_detect_dependencies` (bool): Whether to automatically detect dependencies and build images
+- `auto_cleanup_dynamic_images` (bool): Whether to automatically remove dynamically created images on cleanup (default: True)
 - `network_access` (bool): Whether to allow network access in containers
 - `default_timeout` (int): Default timeout for code execution in seconds
 - `image_name` (str): Docker image name to use for containers
